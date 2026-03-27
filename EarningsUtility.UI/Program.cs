@@ -20,31 +20,54 @@ namespace EarningsUtility.UI
             if (appSettings.Environments.Count == 0)
                 throw new InvalidOperationException("No environments configured in appsettings.json.");
 
-            Console.Clear();
-            WriteColor("========================================", ConsoleColor.Cyan);
-            WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
-            WriteColor("========================================", ConsoleColor.Cyan);
-            Console.WriteLine();
-            WriteColor("Select an environment:", ConsoleColor.White);
+            var cliArgs = ParseArgs(args);
+            cliArgs.TryGetValue("--env", out var cliEnv);
+            cliArgs.TryGetValue("--uln", out var cliUln);
+            cliArgs.TryGetValue("--employer", out var cliEmployer);
+            bool oneShot = cliEnv != null && cliUln != null && cliEmployer != null && long.TryParse(cliEmployer, out _);
 
-            var envNames = appSettings.Environments.Keys.ToList();
-            for (int i = 0; i < envNames.Count; i++)
-                WriteColor($"  {i + 1}. {envNames[i]}", ConsoleColor.Yellow);
-
-            Console.WriteLine();
             string selectedEnvName;
             string selectedNamespace;
-            while (true)
+
+            if (oneShot)
             {
-                WriteColor("Enter number: ", ConsoleColor.White, newLine: false);
-                var input = Console.ReadLine()?.Trim();
-                if (int.TryParse(input, out int choice) && choice >= 1 && choice <= envNames.Count)
+                if (!appSettings.Environments.TryGetValue(cliEnv!, out var ns))
                 {
-                    selectedEnvName = envNames[choice - 1];
-                    selectedNamespace = appSettings.Environments[selectedEnvName];
-                    break;
+                    Console.Error.WriteLine($"Unknown environment '{cliEnv}'. Available: {string.Join(", ", appSettings.Environments.Keys)}");
+                    Environment.Exit(1);
+                    return;
                 }
-                WriteColor("Invalid selection, please try again.", ConsoleColor.Red);
+                selectedEnvName = cliEnv!;
+                selectedNamespace = ns;
+            }
+            else
+            {
+                Console.Clear();
+                WriteColor("========================================", ConsoleColor.Cyan);
+                WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
+                WriteColor("========================================", ConsoleColor.Cyan);
+                Console.WriteLine();
+                WriteColor("Select an environment:", ConsoleColor.White);
+
+                var envNames = appSettings.Environments.Keys.ToList();
+                for (int i = 0; i < envNames.Count; i++)
+                    WriteColor($"  {i + 1}. {envNames[i]}", ConsoleColor.Yellow);
+
+                Console.WriteLine();
+                selectedEnvName = null!;
+                selectedNamespace = null!;
+                while (true)
+                {
+                    WriteColor("Enter number: ", ConsoleColor.White, newLine: false);
+                    var input = Console.ReadLine()?.Trim();
+                    if (int.TryParse(input, out int choice) && choice >= 1 && choice <= envNames.Count)
+                    {
+                        selectedEnvName = envNames[choice - 1];
+                        selectedNamespace = appSettings.Environments[selectedEnvName];
+                        break;
+                    }
+                    WriteColor("Invalid selection, please try again.", ConsoleColor.Red);
+                }
             }
 
             Console.WriteLine();
@@ -68,42 +91,53 @@ namespace EarningsUtility.UI
             var endpointInstance = await Endpoint.Start(endpointConfiguration).ConfigureAwait(false);
             WriteColor("Connected.", ConsoleColor.Green);
 
-            Console.Clear();
-            WriteColor("========================================", ConsoleColor.Cyan);
-            WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
-            WriteColor("========================================", ConsoleColor.Cyan);
-            Console.WriteLine();
-            WriteColor($"Connected to: {selectedNamespace}", ConsoleColor.Green);
-            Console.WriteLine();
-            Console.WriteLine("This utility simulates a Short Course Approval by an Employer by sending an ApprenticeshipCreatedEvent via service bus.");
-            Console.WriteLine("You will be prompted to enter the ULN and the EmployerAccountId. The ULN should match that of the ShortCourse you are trying to approve.");
-            Console.WriteLine();
-
-            while (true)
+            if (oneShot)
             {
-                WriteColor("Press Escape to exit, or any other key to send a Short Course Approval...", ConsoleColor.Yellow);
-
-                var key = Console.ReadKey(intercept: true);
-                if (key.Key == ConsoleKey.Escape)
-                    break;
-
-                Console.WriteLine();
-                WriteColor("Enter the learner's ULN: ", ConsoleColor.White, newLine: false);
-                var uln = Console.ReadLine() ?? string.Empty;
-
-                WriteColor("Enter the approving Employer's Account ID (numeric): ", ConsoleColor.White, newLine: false);
-                var employerAccountId = long.Parse(Console.ReadLine() ?? "0");
-
+                var employerAccountId = long.Parse(cliEmployer!);
                 Console.WriteLine();
                 WriteColor("Sending...", ConsoleColor.DarkGray);
+                await SendShortCourseApproval(endpointInstance, cliUln!, employerAccountId);
+            }
+            else
+            {
+                Console.Clear();
+                WriteColor("========================================", ConsoleColor.Cyan);
+                WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
+                WriteColor("========================================", ConsoleColor.Cyan);
+                Console.WriteLine();
+                WriteColor($"Connected to: {selectedNamespace}", ConsoleColor.Green);
+                Console.WriteLine();
+                Console.WriteLine("This utility simulates a Short Course Approval by an Employer by sending an ApprenticeshipCreatedEvent via service bus.");
+                Console.WriteLine("You will be prompted to enter the ULN and the EmployerAccountId. The ULN should match that of the ShortCourse you are trying to approve.");
                 Console.WriteLine();
 
-                await SendShortCourseApproval(endpointInstance, uln, employerAccountId);
-                Console.WriteLine();
+                while (true)
+                {
+                    WriteColor("Press Escape to exit, or any other key to send a Short Course Approval...", ConsoleColor.Yellow);
+
+                    var key = Console.ReadKey(intercept: true);
+                    if (key.Key == ConsoleKey.Escape)
+                        break;
+
+                    Console.WriteLine();
+                    WriteColor("Enter the learner's ULN: ", ConsoleColor.White, newLine: false);
+                    var uln = Console.ReadLine() ?? string.Empty;
+
+                    WriteColor("Enter the approving Employer's Account ID (numeric): ", ConsoleColor.White, newLine: false);
+                    var employerAccountId = long.Parse(Console.ReadLine() ?? "0");
+
+                    Console.WriteLine();
+                    WriteColor("Sending...", ConsoleColor.DarkGray);
+                    Console.WriteLine();
+
+                    await SendShortCourseApproval(endpointInstance, uln, employerAccountId);
+                    Console.WriteLine();
+                }
+
+                WriteColor("Goodbye.", ConsoleColor.DarkGray);
             }
 
             await endpointInstance.Stop().ConfigureAwait(false);
-            WriteColor("Goodbye.", ConsoleColor.DarkGray);
         }
 
         private static async Task SendShortCourseApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId)
@@ -145,6 +179,15 @@ namespace EarningsUtility.UI
             await endpointInstance.Publish(eventMessage).ConfigureAwait(false);
 
             WriteColor($"Short Course Approval sent for ULN {uln} (Employer Account ID: {employerAccountId}).", ConsoleColor.Green);
+        }
+
+        private static Dictionary<string, string> ParseArgs(string[] args)
+        {
+            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < args.Length - 1; i++)
+                if (args[i].StartsWith("--"))
+                    result[args[i]] = args[i + 1];
+            return result;
         }
 
         private static void WriteColor(string text, ConsoleColor color, bool newLine = true)
