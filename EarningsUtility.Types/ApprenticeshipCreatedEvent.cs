@@ -45,6 +45,7 @@ public class ApprenticeshipCreatedEvent
 
     public long? TransferSenderId { get; set; }
 
+    [JsonConverter(typeof(StringEnumConverter))]
     public ApprenticeshipEmployerType? ApprenticeshipEmployerTypeOnApproval { get; set; }
 
     public long? ContinuationOfId { get; set; }
@@ -61,6 +62,7 @@ public class ApprenticeshipCreatedEvent
 
     public long? LearnerDataId { get; set; }
 
+    [JsonConverter(typeof(StringEnumConverter))]
     public LearningType LearningType { get; set; }
     /// <summary>
     /// IsOnFlexiPaymentPilot has been removed from Commitments, but is still referenced by Learning in order to determine

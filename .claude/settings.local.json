@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:\\\\code\\\\sfa\\\\misc\\\\sfa-earnings-utility\" && mv NServiceBusTest EarningsUtility && mv ConsoleApp1 EarningsUtility.TestHarness && mv Types EarningsUtility.Types)",
+      "Bash(cd \"C:\\\\code\\\\sfa\\\\misc\\\\sfa-earnings-utility\" && mv EarningsUtility/NServiceBusTest.csproj EarningsUtility/EarningsUtility.csproj && mv EarningsUtility.TestHarness/ConsoleApp1.csproj EarningsUtility.TestHarness/EarningsUtility.TestHarness.csproj && mv EarningsUtility.Types/Types.csproj EarningsUtility.Types/EarningsUtility.Types.csproj && mv NServiceBusTest.sln EarningsUtility.sln)",
+      "Bash(cd \"C:\\\\code\\\\sfa\\\\misc\\\\sfa-earnings-utility\" && for f in EarningsUtility/CompleteReleaseCommand.cs EarningsUtility/ConfigureNServiceBusExtension.cs EarningsUtility/FetchedProvidersEvent.cs EarningsUtility/FetchProvidersCommand.cs EarningsUtility/FetchProvidersCommandHandler.cs EarningsUtility/Function1.cs EarningsUtility/OrderSaga.cs EarningsUtility/OrderSagaData.cs EarningsUtility/ProcessProviderPaymentCommand.cs EarningsUtility/ProcessProviderPaymentCommandHandler.cs EarningsUtility/ProviderPaymentProcessedEvent.cs; do sed -i 's/namespace NServiceBusTest/namespace EarningsUtility/g' \"$f\"; done)",
+      "Bash(cd \"C:\\\\code\\\\sfa\\\\misc\\\\sfa-earnings-utility\" && sed -i 's/namespace NServiceBusEventSender/namespace EarningsUtility.TestHarness/g' EarningsUtility.TestHarness/Program.cs && sed -i 's/namespace Types/namespace EarningsUtility.Types/g' EarningsUtility.Types/Saga.cs)",
+      "Bash(cd \"C:\\\\code\\\\sfa\\\\misc\\\\sfa-earnings-utility\" && sed -i 's/using Types;/using EarningsUtility.Types;/g' EarningsUtility/OrderSaga.cs && sed -i 's/using NServiceBusTest;/using EarningsUtility;/g' EarningsUtility/Program.cs)",
+      "Bash(cd \"C:\\\\code\\\\sfa\\\\misc\\\\sfa-earnings-utility\" && mv EarningsUtility.TestHarness EarningsUtility.Console && mv EarningsUtility.Console/EarningsUtility.TestHarness.csproj EarningsUtility.Console/EarningsUtility.Console.csproj)",
+      "Bash(cd \"C:\\\\code\\\\sfa\\\\misc\\\\sfa-earnings-utility\" && mv EarningsUtility.Console EarningsUtility.UI && mv EarningsUtility.UI/EarningsUtility.Console.csproj EarningsUtility.UI/EarningsUtility.UI.csproj)",
+      "Bash(powershell -command \"[System.Reflection.Assembly]::LoadFrom\\('EarningsUtility.UI/bin/Debug/net8.0/NServiceBus.Core.dll'\\).GetTypes\\(\\) | Where-Object { \\\\$_.Name -like '*Log*' -or \\\\$_.Name -like '*Null*' } | Select-Object -ExpandProperty FullName\")",
+      "Bash(xargs grep:*)",
+      "Bash(find /c/Users/foste/.nuget/packages/nservicebus/9.2.6 -name *.dll)",
+      "Bash(powershell -command \"\\\\$bytes = [System.IO.File]::ReadAllBytes\\('C:/Users/foste/.nuget/packages/nservicebus/9.2.6/lib/net8.0/NServiceBus.Core.dll'\\); \\\\$text = [System.Text.Encoding]::UTF8.GetString\\(\\\\$bytes\\); \\\\$text -split '\\\\0' | Where-Object { \\\\$_ -match 'Log' -and \\\\$_.Length -gt 3 -and \\\\$_.Length -lt 60 } | Sort-Object -Unique | Select-Object -First 50\")",
+      "Bash(powershell -command \"\\\\$bytes = [System.IO.File]::ReadAllBytes\\('C:/Users/foste/.nuget/packages/nservicebus/9.2.6/lib/net8.0/NServiceBus.Core.dll'\\); \\\\$text = [System.Text.Encoding]::UTF8.GetString\\(\\\\$bytes\\); \\\\$text -split '\\\\0' | Where-Object { \\\\$_ -match 'Factory|factory' -and \\\\$_.Length -gt 3 -and \\\\$_.Length -lt 80 } | Sort-Object -Unique | Select-Object -First 30\")"
+    ]
+  }
+}

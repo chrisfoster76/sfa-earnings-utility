@@ -1,5 +1,6 @@
 using Azure.Identity;
 using Microsoft.Extensions.Configuration;
+using NServiceBus.Logging;
 using SFA.DAS.CommitmentsV2.Messages.Events;
 using SFA.DAS.CommitmentsV2.Types;
 
@@ -16,12 +17,47 @@ namespace EarningsUtility.UI
             var appSettings = configuration.Get<AppSettings>()
                 ?? throw new InvalidOperationException("appsettings.json could not be bound to AppSettings.");
 
+            if (appSettings.Environments.Count == 0)
+                throw new InvalidOperationException("No environments configured in appsettings.json.");
+
+            Console.Clear();
+            WriteColor("========================================", ConsoleColor.Cyan);
+            WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
+            WriteColor("========================================", ConsoleColor.Cyan);
+            Console.WriteLine();
+            WriteColor("Select an environment:", ConsoleColor.White);
+
+            var envNames = appSettings.Environments.Keys.ToList();
+            for (int i = 0; i < envNames.Count; i++)
+                WriteColor($"  {i + 1}. {envNames[i]}", ConsoleColor.Yellow);
+
+            Console.WriteLine();
+            string selectedEnvName;
+            string selectedNamespace;
+            while (true)
+            {
+                WriteColor("Enter number: ", ConsoleColor.White, newLine: false);
+                var input = Console.ReadLine()?.Trim();
+                if (int.TryParse(input, out int choice) && choice >= 1 && choice <= envNames.Count)
+                {
+                    selectedEnvName = envNames[choice - 1];
+                    selectedNamespace = appSettings.Environments[selectedEnvName];
+                    break;
+                }
+                WriteColor("Invalid selection, please try again.", ConsoleColor.Red);
+            }
+
+            Console.WriteLine();
+            WriteColor($"Connecting to {selectedEnvName}...", ConsoleColor.DarkGray);
+
+            LogManager.Use<DefaultFactory>().Level(LogLevel.Fatal);
+
             var endpointConfiguration = new EndpointConfiguration("Test.Sender");
             endpointConfiguration.EnableInstallers();
             endpointConfiguration.SendOnly();
 
             var transport = endpointConfiguration.UseTransport<AzureServiceBusTransport>();
-            transport.CustomTokenCredential(appSettings.ServiceBusNamespace, new DefaultAzureCredential());
+            transport.CustomTokenCredential(selectedNamespace, new DefaultAzureCredential());
 
             endpointConfiguration.UseSerialization<SystemJsonSerializer>();
 
@@ -30,13 +66,14 @@ namespace EarningsUtility.UI
                        .DefiningCommandsAs(type => type.Namespace != null && type.Name.EndsWith("Command"));
 
             var endpointInstance = await Endpoint.Start(endpointConfiguration).ConfigureAwait(false);
+            WriteColor("Connected.", ConsoleColor.Green);
 
             Console.Clear();
             WriteColor("========================================", ConsoleColor.Cyan);
             WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
             WriteColor("========================================", ConsoleColor.Cyan);
             Console.WriteLine();
-            WriteColor($"Connected to: {appSettings.ServiceBusNamespace}", ConsoleColor.Green);
+            WriteColor($"Connected to: {selectedNamespace}", ConsoleColor.Green);
             Console.WriteLine();
             Console.WriteLine("This utility simulates a Short Course Approval by an Employer by sending an ApprenticeshipCreatedEvent via service bus.");
             Console.WriteLine("You will be prompted to enter the ULN and the EmployerAccountId. The ULN should match that of the ShortCourse you are trying to approve.");
