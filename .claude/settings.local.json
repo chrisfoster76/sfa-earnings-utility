@@ -12,7 +12,14 @@
       "Bash(xargs grep:*)",
       "Bash(find /c/Users/foste/.nuget/packages/nservicebus/9.2.6 -name *.dll)",
       "Bash(powershell -command \"\\\\$bytes = [System.IO.File]::ReadAllBytes\\('C:/Users/foste/.nuget/packages/nservicebus/9.2.6/lib/net8.0/NServiceBus.Core.dll'\\); \\\\$text = [System.Text.Encoding]::UTF8.GetString\\(\\\\$bytes\\); \\\\$text -split '\\\\0' | Where-Object { \\\\$_ -match 'Log' -and \\\\$_.Length -gt 3 -and \\\\$_.Length -lt 60 } | Sort-Object -Unique | Select-Object -First 50\")",
-      "Bash(powershell -command \"\\\\$bytes = [System.IO.File]::ReadAllBytes\\('C:/Users/foste/.nuget/packages/nservicebus/9.2.6/lib/net8.0/NServiceBus.Core.dll'\\); \\\\$text = [System.Text.Encoding]::UTF8.GetString\\(\\\\$bytes\\); \\\\$text -split '\\\\0' | Where-Object { \\\\$_ -match 'Factory|factory' -and \\\\$_.Length -gt 3 -and \\\\$_.Length -lt 80 } | Sort-Object -Unique | Select-Object -First 30\")"
+      "Bash(powershell -command \"\\\\$bytes = [System.IO.File]::ReadAllBytes\\('C:/Users/foste/.nuget/packages/nservicebus/9.2.6/lib/net8.0/NServiceBus.Core.dll'\\); \\\\$text = [System.Text.Encoding]::UTF8.GetString\\(\\\\$bytes\\); \\\\$text -split '\\\\0' | Where-Object { \\\\$_ -match 'Factory|factory' -and \\\\$_.Length -gt 3 -and \\\\$_.Length -lt 80 } | Sort-Object -Unique | Select-Object -First 30\")",
+      "Bash(dotnet build:*)",
+      "Bash(\"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env local --uln 23456734 --employer 67)",
+      "Bash(\"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env local --uln 23456734 --employer 12345)",
+      "Bash(for uln:*)",
+      "Bash(do \"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env local --uln $uln --employer 12345)",
+      "Bash(done)",
+      "Bash(do \"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env demo --uln $uln --employer 12345)"
     ]
   }
 }

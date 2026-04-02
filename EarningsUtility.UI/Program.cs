@@ -24,7 +24,11 @@ namespace EarningsUtility.UI
             cliArgs.TryGetValue("--env", out var cliEnv);
             cliArgs.TryGetValue("--uln", out var cliUln);
             cliArgs.TryGetValue("--employer", out var cliEmployer);
-            bool oneShot = cliEnv != null && cliUln != null && cliEmployer != null && long.TryParse(cliEmployer, out _);
+            cliArgs.TryGetValue("--employer-type", out var cliEmployerType);
+            cliArgs.TryGetValue("--apprenticeship-id", out var cliApprenticeshipId);
+            bool oneShot = cliEnv != null && cliUln != null && cliEmployer != null && long.TryParse(cliEmployer, out _)
+                && cliEmployerType != null && Enum.TryParse<ApprenticeshipEmployerType>(cliEmployerType, ignoreCase: true, out _)
+                && cliApprenticeshipId != null && long.TryParse(cliApprenticeshipId, out _);
 
             string selectedEnvName;
             string selectedNamespace;
@@ -94,9 +98,11 @@ namespace EarningsUtility.UI
             if (oneShot)
             {
                 var employerAccountId = long.Parse(cliEmployer!);
+                var employerType = Enum.Parse<ApprenticeshipEmployerType>(cliEmployerType!, ignoreCase: true);
+                var apprenticeshipId = long.Parse(cliApprenticeshipId!);
                 Console.WriteLine();
                 WriteColor("Sending...", ConsoleColor.DarkGray);
-                await SendShortCourseApproval(endpointInstance, cliUln!, employerAccountId);
+                await SendShortCourseApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId);
             }
             else
             {
@@ -126,11 +132,23 @@ namespace EarningsUtility.UI
                     WriteColor("Enter the approving Employer's Account ID (numeric): ", ConsoleColor.White, newLine: false);
                     var employerAccountId = long.Parse(Console.ReadLine() ?? "0");
 
+                    ApprenticeshipEmployerType employerType;
+                    while (true)
+                    {
+                        WriteColor($"Enter Employer Type ({string.Join("/", Enum.GetNames<ApprenticeshipEmployerType>())}): ", ConsoleColor.White, newLine: false);
+                        if (Enum.TryParse<ApprenticeshipEmployerType>(Console.ReadLine(), ignoreCase: true, out employerType))
+                            break;
+                        WriteColor("Invalid value, please try again.", ConsoleColor.Red);
+                    }
+
+                    WriteColor("Enter the Apprenticeship ID (numeric): ", ConsoleColor.White, newLine: false);
+                    var apprenticeshipId = long.Parse(Console.ReadLine() ?? "0");
+
                     Console.WriteLine();
                     WriteColor("Sending...", ConsoleColor.DarkGray);
                     Console.WriteLine();
 
-                    await SendShortCourseApproval(endpointInstance, uln, employerAccountId);
+                    await SendShortCourseApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId);
                     Console.WriteLine();
                 }
 
@@ -140,12 +158,13 @@ namespace EarningsUtility.UI
             await endpointInstance.Stop().ConfigureAwait(false);
         }
 
-        private static async Task SendShortCourseApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId)
+        private static async Task SendShortCourseApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId)
         {
             var eventMessage = new ApprenticeshipCreatedEvent
             {
                 LearningType = LearningType.ApprenticeshipUnit,
-                ApprenticeshipId = 1,
+                ApprenticeshipId = apprenticeshipId,
+                ApprenticeshipEmployerTypeOnApproval = employerType,
                 ApprenticeshipHashedId = "XYZ123",
                 Uln = uln,
                 ProviderId = 10005077,
