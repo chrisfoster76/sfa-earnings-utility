@@ -27,9 +27,11 @@ namespace EarningsUtility.UI
             cliArgs.TryGetValue("--employer-type", out var cliEmployerType);
             cliArgs.TryGetValue("--apprenticeship-id", out var cliApprenticeshipId);
             cliArgs.TryGetValue("--transfer-sender", out var cliTransferSender);
+            cliArgs.TryGetValue("--type", out var cliType);
             bool oneShot = cliEnv != null && cliUln != null && cliEmployer != null && long.TryParse(cliEmployer, out _)
                 && cliEmployerType != null && Enum.TryParse<ApprenticeshipEmployerType>(cliEmployerType, ignoreCase: true, out _)
-                && cliApprenticeshipId != null && long.TryParse(cliApprenticeshipId, out _);
+                && cliApprenticeshipId != null && long.TryParse(cliApprenticeshipId, out _)
+                && cliType != null && (cliType.Equals("ShortCourse", StringComparison.OrdinalIgnoreCase) || cliType.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase));
 
             string selectedEnvName;
             string selectedNamespace;
@@ -102,9 +104,12 @@ namespace EarningsUtility.UI
                 var employerType = Enum.Parse<ApprenticeshipEmployerType>(cliEmployerType!, ignoreCase: true);
                 var apprenticeshipId = long.Parse(cliApprenticeshipId!);
                 long? transferSenderId = long.TryParse(cliTransferSender, out var ts) ? ts : null;
+                var learningType = cliType!.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase)
+                    ? LearningType.Apprenticeship
+                    : LearningType.ApprenticeshipUnit;
                 Console.WriteLine();
                 WriteColor("Sending...", ConsoleColor.DarkGray);
-                await SendShortCourseApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId, transferSenderId);
+                await SendApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId, learningType, transferSenderId);
             }
             else
             {
@@ -115,19 +120,30 @@ namespace EarningsUtility.UI
                 Console.WriteLine();
                 WriteColor($"Connected to: {selectedNamespace}", ConsoleColor.Green);
                 Console.WriteLine();
-                Console.WriteLine("This utility simulates a Short Course Approval by an Employer by sending an ApprenticeshipCreatedEvent via service bus.");
-                Console.WriteLine("You will be prompted to enter the ULN and the EmployerAccountId. The ULN should match that of the ShortCourse you are trying to approve.");
+                Console.WriteLine("This utility sends an ApprenticeshipCreatedEvent via service bus to simulate an approval.");
+                Console.WriteLine("You will be prompted to select the approval type and enter the ULN and Employer Account ID.");
                 Console.WriteLine();
 
                 while (true)
                 {
-                    WriteColor("Press Escape to exit, or any other key to send a Short Course Approval...", ConsoleColor.Yellow);
+                    WriteColor("Press Escape to exit, or any other key to send an approval...", ConsoleColor.Yellow);
 
                     var key = Console.ReadKey(intercept: true);
                     if (key.Key == ConsoleKey.Escape)
                         break;
 
                     Console.WriteLine();
+
+                    LearningType learningType;
+                    while (true)
+                    {
+                        WriteColor("Select approval type (1=Short Course, 2=Apprenticeship): ", ConsoleColor.White, newLine: false);
+                        var typeInput = Console.ReadLine()?.Trim();
+                        if (typeInput == "1") { learningType = LearningType.ApprenticeshipUnit; break; }
+                        if (typeInput == "2") { learningType = LearningType.Apprenticeship; break; }
+                        WriteColor("Invalid selection, please enter 1 or 2.", ConsoleColor.Red);
+                    }
+
                     WriteColor("Enter the learner's ULN: ", ConsoleColor.White, newLine: false);
                     var uln = Console.ReadLine() ?? string.Empty;
 
@@ -154,7 +170,7 @@ namespace EarningsUtility.UI
                     WriteColor("Sending...", ConsoleColor.DarkGray);
                     Console.WriteLine();
 
-                    await SendShortCourseApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId, transferSenderId);
+                    await SendApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId, learningType, transferSenderId);
                     Console.WriteLine();
                 }
 
@@ -164,11 +180,11 @@ namespace EarningsUtility.UI
             await endpointInstance.Stop().ConfigureAwait(false);
         }
 
-        private static async Task SendShortCourseApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId, long? transferSenderId = null)
+        private static async Task SendApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId, LearningType learningType, long? transferSenderId = null)
         {
             var eventMessage = new ApprenticeshipCreatedEvent
             {
-                LearningType = LearningType.ApprenticeshipUnit,
+                LearningType = learningType,
                 ApprenticeshipId = apprenticeshipId,
                 ApprenticeshipEmployerTypeOnApproval = employerType,
                 TransferSenderId = transferSenderId,
@@ -179,9 +195,9 @@ namespace EarningsUtility.UI
                 FirstName = "John",
                 LastName = "Smith",
                 IsOnFlexiPaymentPilot = true,
-                ActualStartDate = DateTime.Parse("2018-08-01"),
-                StartDate = DateTime.Parse("2018-08-01"),
-                EndDate = DateTime.Parse("2020-07-31"),
+                ActualStartDate = DateTime.Parse("2025-08-01"),
+                StartDate = DateTime.Parse("2025-08-01"),
+                EndDate = DateTime.Parse("2026-07-31"),
                 TrainingCode = "21",
                 TrainingCourseVersion = "",
                 TrainingCourseOption = "",
@@ -196,15 +212,16 @@ namespace EarningsUtility.UI
                         Cost = 30000,
                         EndPointAssessmentPrice = 5000,
                         TrainingPrice = 25000,
-                        FromDate = DateTime.Parse("2018-08-01"),
-                        ToDate = DateTime.Parse("2020-07-31"),
+                        FromDate = DateTime.Parse("2025-08-01"),
+                        ToDate = DateTime.Parse("2026-07-31"),
                     }
                 }
             };
 
             await endpointInstance.Publish(eventMessage).ConfigureAwait(false);
 
-            WriteColor($"Short Course Approval sent for ULN {uln} (Employer Account ID: {employerAccountId}).", ConsoleColor.Green);
+            var typeLabel = learningType == LearningType.Apprenticeship ? "Apprenticeship" : "Short Course";
+            WriteColor($"{typeLabel} Approval sent for ULN {uln} (Employer Account ID: {employerAccountId}).", ConsoleColor.Green);
         }
 
         private static Dictionary<string, string> ParseArgs(string[] args)
