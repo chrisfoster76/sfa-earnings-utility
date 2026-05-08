@@ -19,7 +19,9 @@
       "Bash(for uln:*)",
       "Bash(do \"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env local --uln $uln --employer 12345)",
       "Bash(done)",
-      "Bash(do \"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env demo --uln $uln --employer 12345)"
+      "Bash(do \"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env demo --uln $uln --employer 12345)",
+      "Bash(powershell:*)",
+      "Bash(ls:*)"
     ]
   }
 }

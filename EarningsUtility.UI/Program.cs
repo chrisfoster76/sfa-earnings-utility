@@ -26,6 +26,7 @@ namespace EarningsUtility.UI
             cliArgs.TryGetValue("--employer", out var cliEmployer);
             cliArgs.TryGetValue("--employer-type", out var cliEmployerType);
             cliArgs.TryGetValue("--apprenticeship-id", out var cliApprenticeshipId);
+            cliArgs.TryGetValue("--transfer-sender", out var cliTransferSender);
             bool oneShot = cliEnv != null && cliUln != null && cliEmployer != null && long.TryParse(cliEmployer, out _)
                 && cliEmployerType != null && Enum.TryParse<ApprenticeshipEmployerType>(cliEmployerType, ignoreCase: true, out _)
                 && cliApprenticeshipId != null && long.TryParse(cliApprenticeshipId, out _);
@@ -100,9 +101,10 @@ namespace EarningsUtility.UI
                 var employerAccountId = long.Parse(cliEmployer!);
                 var employerType = Enum.Parse<ApprenticeshipEmployerType>(cliEmployerType!, ignoreCase: true);
                 var apprenticeshipId = long.Parse(cliApprenticeshipId!);
+                long? transferSenderId = long.TryParse(cliTransferSender, out var ts) ? ts : null;
                 Console.WriteLine();
                 WriteColor("Sending...", ConsoleColor.DarkGray);
-                await SendShortCourseApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId);
+                await SendShortCourseApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId, transferSenderId);
             }
             else
             {
@@ -144,11 +146,15 @@ namespace EarningsUtility.UI
                     WriteColor("Enter the Apprenticeship ID (numeric): ", ConsoleColor.White, newLine: false);
                     var apprenticeshipId = long.Parse(Console.ReadLine() ?? "0");
 
+                    WriteColor("Enter Transfer Sender ID (or press Enter to skip): ", ConsoleColor.White, newLine: false);
+                    var transferSenderInput = Console.ReadLine()?.Trim();
+                    long? transferSenderId = long.TryParse(transferSenderInput, out var ts) ? ts : null;
+
                     Console.WriteLine();
                     WriteColor("Sending...", ConsoleColor.DarkGray);
                     Console.WriteLine();
 
-                    await SendShortCourseApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId);
+                    await SendShortCourseApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId, transferSenderId);
                     Console.WriteLine();
                 }
 
@@ -158,13 +164,14 @@ namespace EarningsUtility.UI
             await endpointInstance.Stop().ConfigureAwait(false);
         }
 
-        private static async Task SendShortCourseApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId)
+        private static async Task SendShortCourseApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId, long? transferSenderId = null)
         {
             var eventMessage = new ApprenticeshipCreatedEvent
             {
                 LearningType = LearningType.ApprenticeshipUnit,
                 ApprenticeshipId = apprenticeshipId,
                 ApprenticeshipEmployerTypeOnApproval = employerType,
+                TransferSenderId = transferSenderId,
                 ApprenticeshipHashedId = "XYZ123",
                 Uln = uln,
                 ProviderId = 10005077,
