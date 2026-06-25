@@ -20,24 +20,26 @@ Run without arguments. You will be prompted to:
 4. Enter the approving Employer's Account ID (numeric)
 5. Enter Employer Type (e.g. `Levy`/`NonLevy`)
 6. Enter the Apprenticeship ID (numeric)
-7. Enter Transfer Sender ID (optional)
+7. Enter the Provider's UKPRN (numeric)
+8. Enter the Training Code
+9. Enter Transfer Sender ID (optional)
 
 Press Escape to exit.
 
 ### One-shot mode (all args required)
 
 ```
-EarningsUtility.UI.exe --env <name> --uln <uln> --employer <accountId> --employer-type <type> --apprenticeship-id <id> --type <ShortCourse|Apprenticeship>
+EarningsUtility.UI.exe --env <name> --uln <uln> --employer <accountId> --employer-type <type> --apprenticeship-id <id> --ukprn <ukprn> --training-code <code> --type <ShortCourse|Apprenticeship>
 ```
 
 Example (Short Course):
 ```
-EarningsUtility.UI.exe --env demo --uln 1234567890 --employer 12345 --employer-type Levy --apprenticeship-id 99 --type ShortCourse
+EarningsUtility.UI.exe --env demo --uln 1234567890 --employer 12345 --employer-type Levy --apprenticeship-id 99 --ukprn 10005077 --training-code 21 --type ShortCourse
 ```
 
 Example (Apprenticeship):
 ```
-EarningsUtility.UI.exe --env demo --uln 1234567890 --employer 12345 --employer-type Levy --apprenticeship-id 99 --type Apprenticeship
+EarningsUtility.UI.exe --env demo --uln 1234567890 --employer 12345 --employer-type Levy --apprenticeship-id 99 --ukprn 10005077 --training-code 21 --type Apprenticeship
 ```
 
 Optional: `--transfer-sender <id>`
@@ -52,10 +54,12 @@ Authentication uses `DefaultAzureCredential` — no connection strings.
 
 ## What the event contains
 
-The published `ApprenticeshipCreatedEvent` has mostly hardcoded values (name, dates, provider, training code etc). The fields driven by user input are:
+The published `ApprenticeshipCreatedEvent` has mostly hardcoded values (name, dates, provider etc). The fields driven by user input are:
 - `Uln` — from `--uln` or interactive prompt
 - `AccountId` — from `--employer` or interactive prompt
 - `ApprenticeshipEmployerTypeOnApproval` — from `--employer-type` or interactive prompt
 - `ApprenticeshipId` — from `--apprenticeship-id` or interactive prompt
 - `LearningType` — `ApprenticeshipUnit` for Short Course, `Apprenticeship` for Apprenticeship
+- `ProviderId` — from `--ukprn` or interactive prompt
+- `TrainingCode` — from `--training-code` or interactive prompt
 - `TransferSenderId` — from `--transfer-sender` or interactive prompt (optional)

@@ -28,10 +28,14 @@ namespace EarningsUtility.UI
             cliArgs.TryGetValue("--apprenticeship-id", out var cliApprenticeshipId);
             cliArgs.TryGetValue("--transfer-sender", out var cliTransferSender);
             cliArgs.TryGetValue("--type", out var cliType);
+            cliArgs.TryGetValue("--ukprn", out var cliUkprn);
+            cliArgs.TryGetValue("--training-code", out var cliTrainingCode);
             bool oneShot = cliEnv != null && cliUln != null && cliEmployer != null && long.TryParse(cliEmployer, out _)
                 && cliEmployerType != null && Enum.TryParse<ApprenticeshipEmployerType>(cliEmployerType, ignoreCase: true, out _)
                 && cliApprenticeshipId != null && long.TryParse(cliApprenticeshipId, out _)
-                && cliType != null && (cliType.Equals("ShortCourse", StringComparison.OrdinalIgnoreCase) || cliType.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase));
+                && cliType != null && (cliType.Equals("ShortCourse", StringComparison.OrdinalIgnoreCase) || cliType.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase))
+                && cliUkprn != null && long.TryParse(cliUkprn, out _)
+                && !string.IsNullOrWhiteSpace(cliTrainingCode);
 
             string selectedEnvName;
             string selectedNamespace;
@@ -104,12 +108,13 @@ namespace EarningsUtility.UI
                 var employerType = Enum.Parse<ApprenticeshipEmployerType>(cliEmployerType!, ignoreCase: true);
                 var apprenticeshipId = long.Parse(cliApprenticeshipId!);
                 long? transferSenderId = long.TryParse(cliTransferSender, out var ts) ? ts : null;
+                var ukprn = long.Parse(cliUkprn!);
                 var learningType = cliType!.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase)
                     ? LearningType.Apprenticeship
                     : LearningType.ApprenticeshipUnit;
                 Console.WriteLine();
                 WriteColor("Sending...", ConsoleColor.DarkGray);
-                await SendApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId, learningType, transferSenderId);
+                await SendApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId, learningType, ukprn, cliTrainingCode!, transferSenderId);
             }
             else
             {
@@ -162,6 +167,19 @@ namespace EarningsUtility.UI
                     WriteColor("Enter the Apprenticeship ID (numeric): ", ConsoleColor.White, newLine: false);
                     var apprenticeshipId = long.Parse(Console.ReadLine() ?? "0");
 
+                    WriteColor("Enter the Provider's UKPRN (numeric): ", ConsoleColor.White, newLine: false);
+                    var ukprn = long.Parse(Console.ReadLine() ?? "0");
+
+                    string trainingCode;
+                    while (true)
+                    {
+                        WriteColor("Enter the Training Code: ", ConsoleColor.White, newLine: false);
+                        trainingCode = Console.ReadLine()?.Trim() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(trainingCode))
+                            break;
+                        WriteColor("Training Code cannot be empty, please try again.", ConsoleColor.Red);
+                    }
+
                     WriteColor("Enter Transfer Sender ID (or press Enter to skip): ", ConsoleColor.White, newLine: false);
                     var transferSenderInput = Console.ReadLine()?.Trim();
                     long? transferSenderId = long.TryParse(transferSenderInput, out var ts) ? ts : null;
@@ -170,7 +188,7 @@ namespace EarningsUtility.UI
                     WriteColor("Sending...", ConsoleColor.DarkGray);
                     Console.WriteLine();
 
-                    await SendApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId, learningType, transferSenderId);
+                    await SendApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId, learningType, ukprn, trainingCode, transferSenderId);
                     Console.WriteLine();
                 }
 
@@ -180,7 +198,7 @@ namespace EarningsUtility.UI
             await endpointInstance.Stop().ConfigureAwait(false);
         }
 
-        private static async Task SendApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId, LearningType learningType, long? transferSenderId = null)
+        private static async Task SendApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId, LearningType learningType, long ukprn, string trainingCode, long? transferSenderId = null)
         {
             var eventMessage = new ApprenticeshipCreatedEvent
             {
@@ -190,7 +208,7 @@ namespace EarningsUtility.UI
                 TransferSenderId = transferSenderId,
                 ApprenticeshipHashedId = "XYZ123",
                 Uln = uln,
-                ProviderId = 10005077,
+                ProviderId = ukprn,
                 DateOfBirth = DateTime.Parse("2005-01-14"),
                 FirstName = "John",
                 LastName = "Smith",
@@ -198,7 +216,7 @@ namespace EarningsUtility.UI
                 ActualStartDate = DateTime.Parse("2025-08-01"),
                 StartDate = DateTime.Parse("2025-08-01"),
                 EndDate = DateTime.Parse("2026-07-31"),
-                TrainingCode = "21",
+                TrainingCode = trainingCode,
                 TrainingCourseVersion = "",
                 TrainingCourseOption = "",
                 TrainingType = ProgrammeType.Standard,
