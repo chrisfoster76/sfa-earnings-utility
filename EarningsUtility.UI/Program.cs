@@ -1,15 +1,25 @@
+using System.Text.Json;
 using Azure.Identity;
+using EarningsUtility.UI.ApprovalsStub;
+using EarningsUtility.UI.Approvals;
+using EarningsUtility.UI.Cli;
 using Microsoft.Extensions.Configuration;
 using NServiceBus.Logging;
 using SFA.DAS.CommitmentsV2.Messages.Events;
 using SFA.DAS.CommitmentsV2.Types;
+using static EarningsUtility.UI.ConsoleWriter;
 
 namespace EarningsUtility.UI
 {
     class Program
     {
-        static async Task Main(string[] args)
+        static async Task<int> Main(string[] args)
         {
+            // The CoC mappings screen draws its two-pane layout with box-drawing characters —
+            // needs UTF-8 output to render correctly on Windows conhost. Swallow failures (e.g.
+            // redirected/piped output in CI) since the console is unused in one-shot mode anyway.
+            try { Console.OutputEncoding = System.Text.Encoding.UTF8; } catch (IOException) { }
+
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.json", optional: false)
                 .Build();
@@ -20,22 +30,28 @@ namespace EarningsUtility.UI
             if (appSettings.Environments.Count == 0)
                 throw new InvalidOperationException("No environments configured in appsettings.json.");
 
-            var cliArgs = ParseArgs(args);
-            cliArgs.TryGetValue("--env", out var cliEnv);
-            cliArgs.TryGetValue("--uln", out var cliUln);
-            cliArgs.TryGetValue("--employer", out var cliEmployer);
-            cliArgs.TryGetValue("--employer-type", out var cliEmployerType);
-            cliArgs.TryGetValue("--apprenticeship-id", out var cliApprenticeshipId);
-            cliArgs.TryGetValue("--transfer-sender", out var cliTransferSender);
-            cliArgs.TryGetValue("--type", out var cliType);
-            cliArgs.TryGetValue("--ukprn", out var cliUkprn);
-            cliArgs.TryGetValue("--training-code", out var cliTrainingCode);
-            bool oneShot = cliEnv != null && cliUln != null && cliEmployer != null && long.TryParse(cliEmployer, out _)
-                && cliEmployerType != null && Enum.TryParse<ApprenticeshipEmployerType>(cliEmployerType, ignoreCase: true, out _)
-                && cliApprenticeshipId != null && long.TryParse(cliApprenticeshipId, out _)
-                && cliType != null && (cliType.Equals("ShortCourse", StringComparison.OrdinalIgnoreCase) || cliType.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase))
-                && cliUkprn != null && long.TryParse(cliUkprn, out _)
-                && !string.IsNullOrWhiteSpace(cliTrainingCode);
+            var cliOptions = CliOptions.Parse(args);
+            var cliEnv = cliOptions.Env;
+            var cliUln = cliOptions.Uln;
+            var cliEmployer = cliOptions.Employer;
+            var cliEmployerType = cliOptions.EmployerType;
+            var cliApprenticeshipId = cliOptions.ApprenticeshipId;
+            var cliTransferSender = cliOptions.TransferSender;
+            var cliType = cliOptions.Type;
+            var cliUkprn = cliOptions.Ukprn;
+            var cliTrainingCode = cliOptions.TrainingCode;
+            bool oneShot = cliOptions.IsOneShot;
+
+            var actionName = cliOptions.ActionOrDefault;
+            if (actionName == "coc-setup") return await RunCocSetupOneShot(appSettings, cliOptions);
+            if (actionName == "coc-find") return await RunCocFindOneShot(appSettings, cliOptions);
+            if (actionName == "coc-delete") return await RunCocDeleteOneShot(appSettings, cliOptions);
+            if (actionName == "coc-event") return await RunCocEventOneShot(appSettings, cliOptions);
+            if (actionName != "approve")
+            {
+                Console.Error.WriteLine($"Unknown --action '{cliOptions.Action}'. Expected: approve, coc-setup, coc-find, coc-delete, coc-event.");
+                return 1;
+            }
 
             string selectedEnvName;
             string selectedNamespace;
@@ -45,8 +61,7 @@ namespace EarningsUtility.UI
                 if (!appSettings.Environments.TryGetValue(cliEnv!, out var ns))
                 {
                     Console.Error.WriteLine($"Unknown environment '{cliEnv}'. Available: {string.Join(", ", appSettings.Environments.Keys)}");
-                    Environment.Exit(1);
-                    return;
+                    return 1;
                 }
                 selectedEnvName = cliEnv!;
                 selectedNamespace = ns;
@@ -58,31 +73,279 @@ namespace EarningsUtility.UI
                 WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
                 WriteColor("========================================", ConsoleColor.Cyan);
                 Console.WriteLine();
-                WriteColor("Select an environment:", ConsoleColor.White);
-
-                var envNames = appSettings.Environments.Keys.ToList();
-                for (int i = 0; i < envNames.Count; i++)
-                    WriteColor($"  {i + 1}. {envNames[i]}", ConsoleColor.Yellow);
-
-                Console.WriteLine();
-                selectedEnvName = null!;
-                selectedNamespace = null!;
-                while (true)
-                {
-                    WriteColor("Enter number: ", ConsoleColor.White, newLine: false);
-                    var input = Console.ReadLine()?.Trim();
-                    if (int.TryParse(input, out int choice) && choice >= 1 && choice <= envNames.Count)
-                    {
-                        selectedEnvName = envNames[choice - 1];
-                        selectedNamespace = appSettings.Environments[selectedEnvName];
-                        break;
-                    }
-                    WriteColor("Invalid selection, please try again.", ConsoleColor.Red);
-                }
+                (selectedEnvName, selectedNamespace) = Menu.SelectEnvironment(appSettings.Environments);
             }
 
+            if (oneShot)
+            {
+                var endpointInstance = await ConnectToServiceBus(selectedEnvName, selectedNamespace);
+
+                var employerAccountId = long.Parse(cliEmployer!);
+                var employerType = Enum.Parse<ApprenticeshipEmployerType>(cliEmployerType!, ignoreCase: true);
+                var apprenticeshipId = long.Parse(cliApprenticeshipId!);
+                long? transferSenderId = long.TryParse(cliTransferSender, out var ts) ? ts : null;
+                var ukprn = long.Parse(cliUkprn!);
+                var learningType = cliType!.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase)
+                    ? LearningType.Apprenticeship
+                    : LearningType.ApprenticeshipUnit;
+                Console.WriteLine();
+                WriteColor("Sending...", ConsoleColor.DarkGray);
+                var oneShotRequest = new ApprovalRequest(cliUln!, employerAccountId, employerType, apprenticeshipId, learningType, ukprn, cliTrainingCode!, transferSenderId);
+                await ApprovalPublisher.Publish(endpointInstance, oneShotRequest);
+
+                await endpointInstance.Stop().ConfigureAwait(false);
+            }
+            else
+            {
+                Console.WriteLine();
+                var endpointInstance = await ConnectToServiceBus(selectedEnvName, selectedNamespace);
+
+                ApprovalsStubClient? stubClient = null;
+
+                Console.Clear();
+                WriteMenuHeader(selectedEnvName);
+
+                while (true)
+                {
+                    var action = Menu.SelectAction();
+                    if (action == Menu.Action.Exit)
+                        break;
+
+                    Console.WriteLine();
+
+                    switch (action)
+                    {
+                        case Menu.Action.Approve:
+                            var request = ApprovalPrompts.Collect();
+                            Console.WriteLine();
+                            WriteColor("Sending...", ConsoleColor.DarkGray);
+                            await ApprovalPublisher.Publish(endpointInstance, request);
+                            break;
+
+                        case Menu.Action.CocMaintain:
+                            stubClient ??= CreateApprovalsStubClient(appSettings, selectedEnvName);
+                            if (stubClient == null) break;
+                            await CocMappingsScreen.RunAsync(stubClient, appSettings.ApprovalsUrlPrefix);
+                            Console.Clear();
+                            WriteMenuHeader(selectedEnvName);
+                            break;
+
+                        case Menu.Action.CocEvent:
+                            stubClient ??= CreateApprovalsStubClient(appSettings, selectedEnvName);
+                            if (stubClient == null) break;
+                            var eventRequest = await CocEventPrompts.CollectAsync(stubClient, appSettings.ApprovalsUrlPrefix);
+                            if (eventRequest == null) break;
+
+                            var eventMessage = CocEventBuilder.Build(eventRequest);
+                            var eventJson = JsonSerializer.Serialize(eventMessage, new JsonSerializerOptions { WriteIndented = true });
+                            Console.WriteLine();
+                            WriteColor("Preview:", ConsoleColor.White);
+                            WriteColor(eventJson, ConsoleColor.DarkGray);
+                            Console.WriteLine();
+                            if (!Menu.Confirm("Send this event? (Enter to send, Escape to cancel): "))
+                                break;
+
+                            WriteColor("Sending...", ConsoleColor.DarkGray);
+                            await CocEventPublisher.Publish(endpointInstance, eventRequest);
+                            break;
+                    }
+
+                    Console.WriteLine();
+                }
+
+                WriteColor("Goodbye.", ConsoleColor.DarkGray);
+
+                await endpointInstance.Stop().ConfigureAwait(false);
+            }
+
+            return 0;
+        }
+
+        private static void WriteMenuHeader(string envName)
+        {
+            WriteColor("========================================", ConsoleColor.Cyan);
+            WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
+            WriteColor("========================================", ConsoleColor.Cyan);
             Console.WriteLine();
-            WriteColor($"Connecting to {selectedEnvName}...", ConsoleColor.DarkGray);
+            WriteColor($"Environment: {envName}", ConsoleColor.Green);
+            Console.WriteLine();
+        }
+
+        private static async Task<int> RunCocSetupOneShot(AppSettings appSettings, CliOptions cliOptions)
+        {
+            if (cliOptions.Env == null || !appSettings.Environments.ContainsKey(cliOptions.Env))
+            {
+                Console.Error.WriteLine($"Unknown environment '{cliOptions.Env}'. Available: {string.Join(", ", appSettings.Environments.Keys)}");
+                return 1;
+            }
+
+            if (cliOptions.LearningKey == null || !Guid.TryParse(cliOptions.LearningKey, out var learningKey))
+            {
+                Console.Error.WriteLine("--learning-key is required and must be a valid GUID for --action coc-setup.");
+                return 1;
+            }
+
+            if (!CocOutcomeMapper.TryParse(cliOptions.Outcome, out var outcome))
+            {
+                Console.Error.WriteLine("--outcome is required for --action coc-setup. Expected: approved, rejected, pending.");
+                return 1;
+            }
+
+            if (!CocChangeKindMapper.TryParseMany(cliOptions.ChangeType, out var changeKinds))
+            {
+                Console.Error.WriteLine("--change-type is required for --action coc-setup. Expected one or more of: price, startdate (comma-separated, e.g. price,startdate).");
+                return 1;
+            }
+
+            var stubClient = CreateApprovalsStubClient(appSettings, cliOptions.Env);
+            if (stubClient == null) return 1;
+
+            try
+            {
+                // One-shot mode keeps a single --outcome flag applied uniformly to every
+                // selected --change-type — the swagger contract allows per-field outcomes (see
+                // approvals-integration.md), but interactive mode is where that granularity is
+                // exposed; scripted callers wanting mixed outcomes can issue separate coc-setup
+                // calls against the same learningKey (an upsert, so the last call's kinds win —
+                // note that would currently overwrite rather than merge, since the request body
+                // is the whole mapping, not a per-field patch).
+                var outcomes = changeKinds.ToDictionary(k => k, _ => outcome);
+                await stubClient.RegisterApproval(learningKey, outcomes);
+                WriteColor($"Registered approvals/{learningKey} as {string.Join(" + ", changeKinds)} -> {outcome.ToApprovalStatus()}.", ConsoleColor.Green);
+                return 0;
+            }
+            catch (HttpRequestException ex)
+            {
+                Console.Error.WriteLine($"Failed to register mapping: {ex.Message}");
+                return 1;
+            }
+        }
+
+        private static async Task<int> RunCocFindOneShot(AppSettings appSettings, CliOptions cliOptions)
+        {
+            if (cliOptions.Env == null || !appSettings.Environments.ContainsKey(cliOptions.Env))
+            {
+                Console.Error.WriteLine($"Unknown environment '{cliOptions.Env}'. Available: {string.Join(", ", appSettings.Environments.Keys)}");
+                return 1;
+            }
+
+            var stubClient = CreateApprovalsStubClient(appSettings, cliOptions.Env);
+            if (stubClient == null) return 1;
+
+            var found = await stubClient.FindMappings(appSettings.ApprovalsUrlPrefix);
+            PrintMappings(found);
+            return 0;
+        }
+
+        private static async Task<int> RunCocDeleteOneShot(AppSettings appSettings, CliOptions cliOptions)
+        {
+            if (cliOptions.Env == null || !appSettings.Environments.ContainsKey(cliOptions.Env))
+            {
+                Console.Error.WriteLine($"Unknown environment '{cliOptions.Env}'. Available: {string.Join(", ", appSettings.Environments.Keys)}");
+                return 1;
+            }
+
+            var stubClient = CreateApprovalsStubClient(appSettings, cliOptions.Env);
+            if (stubClient == null) return 1;
+
+            var matches = await stubClient.FindMappings(appSettings.ApprovalsUrlPrefix);
+            if (matches.Count == 0)
+            {
+                WriteColor("No mappings found.", ConsoleColor.Yellow);
+                return 0;
+            }
+
+            if (matches.Count > 1 && !cliOptions.All)
+            {
+                Console.Error.WriteLine($"{matches.Count} mappings match '{appSettings.ApprovalsUrlPrefix}'. Pass --all to delete every match:");
+                PrintMappings(matches);
+                return 1;
+            }
+
+            var exitCode = 0;
+            foreach (var mapping in matches)
+            {
+                try
+                {
+                    await stubClient.DeleteMapping(mapping.HttpMethod, mapping.Url);
+                    WriteColor($"Deleted {mapping.HttpMethod} {mapping.Url}", ConsoleColor.Green);
+                }
+                catch (HttpRequestException ex)
+                {
+                    Console.Error.WriteLine($"Failed to delete {mapping.Url}: {ex.Message}");
+                    exitCode = 1;
+                }
+            }
+            return exitCode;
+        }
+
+        private static async Task<int> RunCocEventOneShot(AppSettings appSettings, CliOptions cliOptions)
+        {
+            if (cliOptions.Env == null || !appSettings.Environments.TryGetValue(cliOptions.Env, out var ns))
+            {
+                Console.Error.WriteLine($"Unknown environment '{cliOptions.Env}'. Available: {string.Join(", ", appSettings.Environments.Keys)}");
+                return 1;
+            }
+
+            if (cliOptions.LearningKey == null || !Guid.TryParse(cliOptions.LearningKey, out var learningKey))
+            {
+                Console.Error.WriteLine("--learning-key is required and must be a valid GUID for --action coc-event.");
+                return 1;
+            }
+
+            if (cliOptions.ApprenticeshipId == null || !long.TryParse(cliOptions.ApprenticeshipId, out var apprenticeshipId))
+            {
+                Console.Error.WriteLine("--apprenticeship-id is required and must be numeric for --action coc-event.");
+                return 1;
+            }
+
+            bool approved;
+            switch (cliOptions.EventType?.Trim().ToLowerInvariant())
+            {
+                case "approved": approved = true; break;
+                case "rejected": approved = false; break;
+                default:
+                    Console.Error.WriteLine("--event-type is required for --action coc-event. Expected: approved, rejected.");
+                    return 1;
+            }
+
+            if (string.IsNullOrWhiteSpace(cliOptions.Field))
+            {
+                Console.Error.WriteLine("--field is required for --action coc-event.");
+                return 1;
+            }
+
+            DateTime? effectiveFrom = null;
+            if (!string.IsNullOrWhiteSpace(cliOptions.EffectiveFrom))
+            {
+                if (!DateTime.TryParse(cliOptions.EffectiveFrom, out var parsed))
+                {
+                    Console.Error.WriteLine($"--effective-from '{cliOptions.EffectiveFrom}' could not be parsed as a date.");
+                    return 1;
+                }
+                effectiveFrom = parsed;
+            }
+
+            var changes = new Dictionary<string, LearningChangeEvent.Change>
+            {
+                [cliOptions.Field] = new LearningChangeEvent.Change
+                {
+                    Old = cliOptions.OldValue,
+                    New = cliOptions.NewValue,
+                    EffectiveFromDate = effectiveFrom
+                }
+            };
+
+            var endpointInstance = await ConnectToServiceBus(cliOptions.Env, ns);
+            var request = new CocEventRequest(approved, learningKey, apprenticeshipId, changes);
+            await CocEventPublisher.Publish(endpointInstance, request);
+            await endpointInstance.Stop().ConfigureAwait(false);
+            return 0;
+        }
+
+        private static async Task<IEndpointInstance> ConnectToServiceBus(string envName, string selectedNamespace)
+        {
+            WriteColor($"Connecting to {envName}...", ConsoleColor.DarkGray);
 
             LogManager.Use<DefaultFactory>().Level(LogLevel.Fatal);
 
@@ -101,162 +364,34 @@ namespace EarningsUtility.UI
 
             var endpointInstance = await Endpoint.Start(endpointConfiguration).ConfigureAwait(false);
             WriteColor("Connected.", ConsoleColor.Green);
+            return endpointInstance;
+        }
 
-            if (oneShot)
+        private static ApprovalsStubClient? CreateApprovalsStubClient(AppSettings appSettings, string envName)
+        {
+            if (!appSettings.ApprovalsStubBaseUrl.TryGetValue(envName, out var baseUrl))
             {
-                var employerAccountId = long.Parse(cliEmployer!);
-                var employerType = Enum.Parse<ApprenticeshipEmployerType>(cliEmployerType!, ignoreCase: true);
-                var apprenticeshipId = long.Parse(cliApprenticeshipId!);
-                long? transferSenderId = long.TryParse(cliTransferSender, out var ts) ? ts : null;
-                var ukprn = long.Parse(cliUkprn!);
-                var learningType = cliType!.Equals("Apprenticeship", StringComparison.OrdinalIgnoreCase)
-                    ? LearningType.Apprenticeship
-                    : LearningType.ApprenticeshipUnit;
-                Console.WriteLine();
-                WriteColor("Sending...", ConsoleColor.DarkGray);
-                await SendApproval(endpointInstance, cliUln!, employerAccountId, employerType, apprenticeshipId, learningType, ukprn, cliTrainingCode!, transferSenderId);
-            }
-            else
-            {
-                Console.Clear();
-                WriteColor("========================================", ConsoleColor.Cyan);
-                WriteColor("  SFA Earnings Utility", ConsoleColor.Cyan);
-                WriteColor("========================================", ConsoleColor.Cyan);
-                Console.WriteLine();
-                WriteColor($"Connected to: {selectedNamespace}", ConsoleColor.Green);
-                Console.WriteLine();
-                Console.WriteLine("This utility sends an ApprenticeshipCreatedEvent via service bus to simulate an approval.");
-                Console.WriteLine("You will be prompted to select the approval type and enter the ULN and Employer Account ID.");
-                Console.WriteLine();
-
-                while (true)
-                {
-                    WriteColor("Press Escape to exit, or any other key to send an approval...", ConsoleColor.Yellow);
-
-                    var key = Console.ReadKey(intercept: true);
-                    if (key.Key == ConsoleKey.Escape)
-                        break;
-
-                    Console.WriteLine();
-
-                    LearningType learningType;
-                    while (true)
-                    {
-                        WriteColor("Select approval type (1=Short Course, 2=Apprenticeship): ", ConsoleColor.White, newLine: false);
-                        var typeInput = Console.ReadLine()?.Trim();
-                        if (typeInput == "1") { learningType = LearningType.ApprenticeshipUnit; break; }
-                        if (typeInput == "2") { learningType = LearningType.Apprenticeship; break; }
-                        WriteColor("Invalid selection, please enter 1 or 2.", ConsoleColor.Red);
-                    }
-
-                    WriteColor("Enter the learner's ULN: ", ConsoleColor.White, newLine: false);
-                    var uln = Console.ReadLine() ?? string.Empty;
-
-                    WriteColor("Enter the approving Employer's Account ID (numeric): ", ConsoleColor.White, newLine: false);
-                    var employerAccountId = long.Parse(Console.ReadLine() ?? "0");
-
-                    ApprenticeshipEmployerType employerType;
-                    while (true)
-                    {
-                        WriteColor($"Enter Employer Type ({string.Join("/", Enum.GetNames<ApprenticeshipEmployerType>())}): ", ConsoleColor.White, newLine: false);
-                        if (Enum.TryParse<ApprenticeshipEmployerType>(Console.ReadLine(), ignoreCase: true, out employerType))
-                            break;
-                        WriteColor("Invalid value, please try again.", ConsoleColor.Red);
-                    }
-
-                    WriteColor("Enter the Apprenticeship ID (numeric): ", ConsoleColor.White, newLine: false);
-                    var apprenticeshipId = long.Parse(Console.ReadLine() ?? "0");
-
-                    WriteColor("Enter the Provider's UKPRN (numeric): ", ConsoleColor.White, newLine: false);
-                    var ukprn = long.Parse(Console.ReadLine() ?? "0");
-
-                    string trainingCode;
-                    while (true)
-                    {
-                        WriteColor("Enter the Training Code: ", ConsoleColor.White, newLine: false);
-                        trainingCode = Console.ReadLine()?.Trim() ?? string.Empty;
-                        if (!string.IsNullOrWhiteSpace(trainingCode))
-                            break;
-                        WriteColor("Training Code cannot be empty, please try again.", ConsoleColor.Red);
-                    }
-
-                    WriteColor("Enter Transfer Sender ID (or press Enter to skip): ", ConsoleColor.White, newLine: false);
-                    var transferSenderInput = Console.ReadLine()?.Trim();
-                    long? transferSenderId = long.TryParse(transferSenderInput, out var ts) ? ts : null;
-
-                    Console.WriteLine();
-                    WriteColor("Sending...", ConsoleColor.DarkGray);
-                    Console.WriteLine();
-
-                    await SendApproval(endpointInstance, uln, employerAccountId, employerType, apprenticeshipId, learningType, ukprn, trainingCode, transferSenderId);
-                    Console.WriteLine();
-                }
-
-                WriteColor("Goodbye.", ConsoleColor.DarkGray);
+                WriteColor($"No approvals-stub configured for '{envName}' — add it under ApprovalsStubBaseUrl in appsettings.json.", ConsoleColor.Red);
+                return null;
             }
 
-            await endpointInstance.Stop().ConfigureAwait(false);
+            var httpClient = new HttpClient { BaseAddress = new Uri(baseUrl) };
+            return new ApprovalsStubClient(httpClient);
         }
 
-        private static async Task SendApproval(IEndpointInstance endpointInstance, string uln, long employerAccountId, ApprenticeshipEmployerType employerType, long apprenticeshipId, LearningType learningType, long ukprn, string trainingCode, long? transferSenderId = null)
+        private static void PrintMappings(IReadOnlyList<MappingData> mappings)
         {
-            var eventMessage = new ApprenticeshipCreatedEvent
+            if (mappings.Count == 0)
             {
-                LearningType = learningType,
-                ApprenticeshipId = apprenticeshipId,
-                ApprenticeshipEmployerTypeOnApproval = employerType,
-                TransferSenderId = transferSenderId,
-                ApprenticeshipHashedId = "XYZ123",
-                Uln = uln,
-                ProviderId = ukprn,
-                DateOfBirth = DateTime.Parse("2005-01-14"),
-                FirstName = "John",
-                LastName = "Smith",
-                IsOnFlexiPaymentPilot = true,
-                ActualStartDate = DateTime.Parse("2025-08-01"),
-                StartDate = DateTime.Parse("2025-08-01"),
-                EndDate = DateTime.Parse("2026-07-31"),
-                TrainingCode = trainingCode,
-                TrainingCourseVersion = "",
-                TrainingCourseOption = "",
-                TrainingType = ProgrammeType.Standard,
-                LegalEntityName = "Mega Corp",
-                AccountLegalEntityId = 456,
-                AccountId = employerAccountId,
-                PriceEpisodes = new PriceEpisode[]
-                {
-                    new PriceEpisode
-                    {
-                        Cost = 30000,
-                        EndPointAssessmentPrice = 5000,
-                        TrainingPrice = 25000,
-                        FromDate = DateTime.Parse("2025-08-01"),
-                        ToDate = DateTime.Parse("2026-07-31"),
-                    }
-                }
-            };
+                WriteColor("No mappings found.", ConsoleColor.Yellow);
+                return;
+            }
 
-            await endpointInstance.Publish(eventMessage).ConfigureAwait(false);
-
-            var typeLabel = learningType == LearningType.Apprenticeship ? "Apprenticeship" : "Short Course";
-            WriteColor($"{typeLabel} Approval sent for ULN {uln} (Employer Account ID: {employerAccountId}).", ConsoleColor.Green);
-        }
-
-        private static Dictionary<string, string> ParseArgs(string[] args)
-        {
-            var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (int i = 0; i < args.Length - 1; i++)
-                if (args[i].StartsWith("--"))
-                    result[args[i]] = args[i + 1];
-            return result;
-        }
-
-        private static void WriteColor(string text, ConsoleColor color, bool newLine = true)
-        {
-            Console.ForegroundColor = color;
-            if (newLine) Console.WriteLine(text);
-            else Console.Write(text);
-            Console.ResetColor();
+            for (int i = 0; i < mappings.Count; i++)
+            {
+                var m = mappings[i];
+                WriteColor($"  {i + 1}. {m.HttpMethod} {m.Url} -> {m.HttpStatusCode}", ConsoleColor.Yellow);
+            }
         }
     }
 }

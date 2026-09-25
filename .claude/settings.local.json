@@ -21,7 +21,14 @@
       "Bash(done)",
       "Bash(do \"EarningsUtility.UI/bin/Debug/net8.0/EarningsUtility.UI.exe\" --env demo --uln $uln --employer 12345)",
       "Bash(powershell:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(dotnet test *)",
+      "Bash(mkdir -p \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-via-post/payloads\")",
+      "Bash(cp \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-baseline-behavior/payloads/01-post-short-course.json\" \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-via-post/payloads/01-post-short-course.json\")",
+      "Bash(cp \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-baseline-behavior/payloads/02-apprenticeship-created-event.json\" \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-via-post/payloads/02-apprenticeship-created-event.json\")",
+      "Bash(cp \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-baseline-behavior/payloads/03-get-learning-key.sql\" \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-via-post/payloads/03-get-learning-key.sql\")",
+      "Bash(cp \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-baseline-behavior/payloads/04-put-withdrawal.json\" \"C:/code/sfa/misc/sfa-earnings-storybook/stories/PROD/Restarts/prod-restart-via-post/payloads/04-put-withdrawal.json\")"
     ]
   }
 }
