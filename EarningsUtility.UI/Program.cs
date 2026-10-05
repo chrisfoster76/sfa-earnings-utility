@@ -354,6 +354,7 @@ namespace EarningsUtility.UI
             endpointConfiguration.SendOnly();
 
             var transport = endpointConfiguration.UseTransport<AzureServiceBusTransport>();
+            transport.UseWebSockets();
             transport.CustomTokenCredential(selectedNamespace, new DefaultAzureCredential());
 
             endpointConfiguration.UseSerialization<SystemJsonSerializer>();
