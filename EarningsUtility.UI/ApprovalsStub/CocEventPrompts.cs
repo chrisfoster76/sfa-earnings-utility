@@ -42,7 +42,7 @@ public static class CocEventPrompts
         // full field-name list.
         var pendingFieldNames = FindPendingFieldNames(mappings, learningKey.Value);
 
-        var changes = new Dictionary<string, LearningChangeEvent.Change>();
+        var changes = new List<LearningChangeEvent.Change>();
         while (true)
         {
             var field = SelectFieldName(pendingFieldNames);
@@ -63,23 +63,17 @@ public static class CocEventPrompts
             ConsoleWriter.WriteColor("New value (optional, press Enter to skip): ", ConsoleColor.White, newLine: false);
             var newValue = Console.ReadLine()?.Trim();
 
-            DateTime? effectiveFrom = null;
-            ConsoleWriter.WriteColor("Effective from date (optional, yyyy-MM-dd, press Enter to skip): ", ConsoleColor.White, newLine: false);
-            var effectiveFromInput = Console.ReadLine()?.Trim();
-            if (!string.IsNullOrWhiteSpace(effectiveFromInput))
+            // Re-entering a field replaces its earlier entry
+            changes.RemoveAll(c => c.ChangeType == field);
+            changes.Add(new LearningChangeEvent.Change
             {
-                if (DateTime.TryParse(effectiveFromInput, out var parsed))
-                    effectiveFrom = parsed;
-                else
-                    ConsoleWriter.WriteColor("Could not parse date, leaving blank.", ConsoleColor.Red);
-            }
-
-            changes[field] = new LearningChangeEvent.Change
-            {
-                Old = string.IsNullOrWhiteSpace(oldValue) ? null : oldValue,
-                New = string.IsNullOrWhiteSpace(newValue) ? null : newValue,
-                EffectiveFromDate = effectiveFrom
-            };
+                ChangeType = field,
+                Data = new LearningChangeEvent.ChangeData
+                {
+                    Old = string.IsNullOrWhiteSpace(oldValue) ? null : oldValue,
+                    New = string.IsNullOrWhiteSpace(newValue) ? null : newValue
+                }
+            });
 
             ConsoleWriter.WriteColor("Add another changed field? y/N: ", ConsoleColor.White, newLine: false);
             if (!string.Equals(Console.ReadLine()?.Trim(), "y", StringComparison.OrdinalIgnoreCase))

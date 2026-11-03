@@ -6,4 +6,4 @@ public record CocEventRequest(
     bool Approved,
     Guid LearningKey,
     long ApprenticeshipId,
-    Dictionary<string, LearningChangeEvent.Change> Changes);
+    List<LearningChangeEvent.Change> Changes);

@@ -21,7 +21,6 @@ public class CliOptions
     public string? Field { get; init; }
     public string? OldValue { get; init; }
     public string? NewValue { get; init; }
-    public string? EffectiveFrom { get; init; }
     public bool All { get; init; }
 
     /// <summary>
@@ -67,7 +66,6 @@ public class CliOptions
             Field = values.GetValueOrDefault("--field"),
             OldValue = values.GetValueOrDefault("--old"),
             NewValue = values.GetValueOrDefault("--new"),
-            EffectiveFrom = values.GetValueOrDefault("--effective-from"),
             All = all
         };
     }

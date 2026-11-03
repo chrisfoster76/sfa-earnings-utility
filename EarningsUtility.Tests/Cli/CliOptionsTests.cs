@@ -169,8 +169,7 @@ public class CliOptionsTests
             "--event-type", "approved",
             "--field", "TrainingPrice",
             "--old", "25000",
-            "--new", "27000",
-            "--effective-from", "2026-08-01"
+            "--new", "27000"
         ]);
 
         Assert.Equal(learningKey.ToString(), options.LearningKey);
@@ -179,6 +178,5 @@ public class CliOptionsTests
         Assert.Equal("TrainingPrice", options.Field);
         Assert.Equal("25000", options.OldValue);
         Assert.Equal("27000", options.NewValue);
-        Assert.Equal("2026-08-01", options.EffectiveFrom);
     }
 }

@@ -315,24 +315,16 @@ namespace EarningsUtility.UI
                 return 1;
             }
 
-            DateTime? effectiveFrom = null;
-            if (!string.IsNullOrWhiteSpace(cliOptions.EffectiveFrom))
+            var changes = new List<LearningChangeEvent.Change>
             {
-                if (!DateTime.TryParse(cliOptions.EffectiveFrom, out var parsed))
+                new()
                 {
-                    Console.Error.WriteLine($"--effective-from '{cliOptions.EffectiveFrom}' could not be parsed as a date.");
-                    return 1;
-                }
-                effectiveFrom = parsed;
-            }
-
-            var changes = new Dictionary<string, LearningChangeEvent.Change>
-            {
-                [cliOptions.Field] = new LearningChangeEvent.Change
-                {
-                    Old = cliOptions.OldValue,
-                    New = cliOptions.NewValue,
-                    EffectiveFromDate = effectiveFrom
+                    ChangeType = cliOptions.Field,
+                    Data = new LearningChangeEvent.ChangeData
+                    {
+                        Old = cliOptions.OldValue,
+                        New = cliOptions.NewValue
+                    }
                 }
             };
 
