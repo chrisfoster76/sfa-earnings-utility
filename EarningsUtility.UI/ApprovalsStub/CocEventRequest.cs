@@ -6,4 +6,5 @@ public record CocEventRequest(
     bool Approved,
     Guid LearningKey,
     long ApprenticeshipId,
-    List<LearningChangeEvent.Change> Changes);
+    List<LearningChangeEvent.Change> Changes,
+    List<LearningChangeEvent.Price>? Prices = null);

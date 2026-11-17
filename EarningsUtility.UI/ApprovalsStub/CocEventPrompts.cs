@@ -10,8 +10,8 @@ public static class CocEventPrompts
         ("Rejected (LearningChangeRejectedEvent)", false)
     };
 
-    /// <summary>Returns null if the flow was cancelled (Escape on the learningKey, outcome, or
-    /// first field-name prompt).</summary>
+    /// <summary>Returns null if the flow was cancelled (Escape on the learningKey or outcome,
+    /// or nothing entered for either prices or fields).</summary>
     public static async Task<CocEventRequest?> CollectAsync(ApprovalsStubClient stubClient, string urlPrefix)
     {
         var mappings = await stubClient.FindMappings(urlPrefix);
@@ -35,27 +35,20 @@ public static class CocEventPrompts
             ConsoleWriter.WriteColor("Invalid number, please try again.", ConsoleColor.Red);
         }
 
-        // Only offered when we can find the mapping this event relates to and it has at least
-        // one pending changeType — narrows the field picker to what an employer decision could
-        // plausibly apply to. Null (mapping not found, e.g. a manually-typed learningKey for
-        // something this tool didn't set up, or nothing on it is pending) falls back to the
-        // full field-name list.
-        var pendingFieldNames = FindPendingFieldNames(mappings, learningKey.Value);
+        // Null means no matching mapping with anything pending, so nothing is narrowed.
+        var pendingKinds = FindPendingKinds(mappings, learningKey.Value);
+
+        var prices = CollectPrices(pendingKinds);
+
+        var fieldNames = pendingKinds?.SelectMany(k => k.ToEventFieldNames()).ToList();
+        var offerFields = fieldNames == null || fieldNames.Count > 0;
 
         var changes = new List<LearningChangeEvent.Change>();
-        while (true)
+        while (offerFields && (prices == null || changes.Count > 0 || AskYes("Add a changed field as well? y/N: ")))
         {
-            var field = SelectFieldName(pendingFieldNames);
+            var field = SelectFieldName(fieldNames);
             if (field == null)
-            {
-                // Escape here cancels adding *this* field. If nothing's been collected yet
-                // that means cancelling the whole event (consistent with every other Escape
-                // point in this flow); once at least one field is in, treat it the same as
-                // answering "n" to "add another?" rather than discarding what's already valid.
-                if (changes.Count == 0)
-                    return null;
                 break;
-            }
 
             ConsoleWriter.WriteColor("Old value (optional, press Enter to skip): ", ConsoleColor.White, newLine: false);
             var oldValue = Console.ReadLine()?.Trim();
@@ -75,12 +68,50 @@ public static class CocEventPrompts
                 }
             });
 
-            ConsoleWriter.WriteColor("Add another changed field? y/N: ", ConsoleColor.White, newLine: false);
-            if (!string.Equals(Console.ReadLine()?.Trim(), "y", StringComparison.OrdinalIgnoreCase))
+            if (!AskYes("Add another changed field? y/N: "))
                 break;
         }
 
-        return new CocEventRequest(approved.Value, learningKey.Value, apprenticeshipId, changes);
+        if (changes.Count == 0 && prices == null)
+            return null;
+
+        return new CocEventRequest(approved.Value, learningKey.Value, apprenticeshipId, changes, prices);
+    }
+
+    private static List<LearningChangeEvent.Price>? CollectPrices(IReadOnlyCollection<CocChangeKind>? pendingKinds)
+    {
+        if (pendingKinds != null && !pendingKinds.Contains(CocChangeKind.Price))
+            return null;
+        if (pendingKinds == null && !AskYes("Include prices? y/N: "))
+            return null;
+
+        ConsoleWriter.WriteColor($"Enter the whole price list, one row at a time, as {CocPriceParser.RowFormat}.", ConsoleColor.Cyan);
+
+        var prices = new List<LearningChangeEvent.Price>();
+        while (true)
+        {
+            var input = Menu.ReadLine($"Price {prices.Count + 1} (Escape to stop): ");
+            if (input == null)
+                break;
+
+            if (!CocPriceParser.TryParseRow(input, out var price, out var error))
+            {
+                ConsoleWriter.WriteColor(error, ConsoleColor.Red);
+                continue;
+            }
+
+            prices.Add(price!);
+            if (!AskYes("Add another price? y/N: "))
+                break;
+        }
+
+        return prices.Count == 0 ? null : prices;
+    }
+
+    private static bool AskYes(string prompt)
+    {
+        ConsoleWriter.WriteColor(prompt, ConsoleColor.White, newLine: false);
+        return string.Equals(Console.ReadLine()?.Trim(), "y", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -116,15 +147,10 @@ public static class CocEventPrompts
     }
 
     /// <summary>
-    /// Looks up the mapping this learningKey relates to (whether it was picked from the pending
-    /// list above or typed manually) and returns the event field names for whichever changeTypes
-    /// are currently pending (employerApprovalRequired) on it — an approve/reject event should
-    /// only plausibly report on fields that were actually left pending, not ones already
-    /// auto-decided. Returns null (meaning "don't restrict") when no matching mapping is found
-    /// — e.g. a manually-typed learningKey for something this tool didn't set up — or when
-    /// nothing on the matched mapping is pending.
+    /// The change kinds pending (employerApprovalRequired) on this learningKey's mapping.
+    /// Null (don't restrict) when there's no matching mapping or nothing on it is pending.
     /// </summary>
-    private static IReadOnlyList<string>? FindPendingFieldNames(IReadOnlyList<MappingData> mappings, Guid learningKey)
+    private static IReadOnlyList<CocChangeKind>? FindPendingKinds(IReadOnlyList<MappingData> mappings, Guid learningKey)
     {
         var mapping = mappings.FirstOrDefault(m => CocMappingHelpers.ExtractLearningKey(m.Url) == learningKey);
         var changes = mapping == null ? null : CocMappingHelpers.TryParseChanges(mapping.Data);
@@ -139,10 +165,7 @@ public static class CocEventPrompts
             .Distinct()
             .ToList();
 
-        if (pendingKinds.Count == 0)
-            return null;
-
-        return pendingKinds.SelectMany(k => k.ToEventFieldNames()).ToList();
+        return pendingKinds.Count == 0 ? null : pendingKinds;
     }
 
     private const string CustomFieldLabel = "Custom field name...";
@@ -150,8 +173,7 @@ public static class CocEventPrompts
     /// <summary>
     /// Offers a pick-list of field names — restricted to <paramref name="allowedFieldNames"/>
     /// when given (the pending changeTypes on the mapping this event relates to), otherwise every
-    /// field name CocChangeKind can produce (TrainingPrice, AssessmentPrice, StartDate — see
-    /// CocChangeKindMapper.ToEventFieldNames) — plus a "Custom field name..." escape hatch for
+    /// field name CocChangeKind can produce (see CocChangeKindMapper.ToEventFieldNames) — plus a "Custom field name..." escape hatch for
     /// anything this tool's mapping-setup screen doesn't mock yet (e.g.
     /// ExpectedEndDate/PersonalDetails/DateOfBirthChanged). Returns null if Escape is pressed on
     /// either the picker or the custom-name entry — a genuine cancel, not a re-prompt, so the

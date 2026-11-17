@@ -1,0 +1,34 @@
+using EarningsUtility.UI.ApprovalsStub;
+
+namespace EarningsUtility.Tests.ApprovalsStub;
+
+public class CocChangeKindMapperTests
+{
+    [Fact]
+    public void Price_has_no_event_field_names_because_it_goes_in_top_level_prices()
+    {
+        Assert.Empty(CocChangeKind.Price.ToEventFieldNames());
+    }
+
+    [Fact]
+    public void Price_verdict_uses_the_Prices_changeType()
+    {
+        Assert.Equal("Prices", CocChangeKind.Price.ToChangeType());
+    }
+
+    [Theory]
+    [InlineData("Prices")]
+    [InlineData("prices")]
+    [InlineData("Price")]
+    public void TryParse_accepts_Prices_and_the_old_Price_spelling(string value)
+    {
+        Assert.True(CocChangeKindMapper.TryParse(value, out var kind));
+        Assert.Equal(CocChangeKind.Price, kind);
+    }
+
+    [Fact]
+    public void StartDate_maps_to_the_StartDate_field()
+    {
+        Assert.Equal(new[] { "StartDate" }, CocChangeKind.StartDate.ToEventFieldNames());
+    }
+}

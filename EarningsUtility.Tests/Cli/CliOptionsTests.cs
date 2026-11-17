@@ -167,16 +167,18 @@ public class CliOptionsTests
             "--learning-key", learningKey.ToString(),
             "--apprenticeship-id", "99",
             "--event-type", "approved",
-            "--field", "TrainingPrice",
-            "--old", "25000",
-            "--new", "27000"
+            "--field", "StartDate",
+            "--old", "2025-08-01",
+            "--new", "2025-09-01",
+            "--prices", "2025-09-01:7200:1800"
         ]);
 
         Assert.Equal(learningKey.ToString(), options.LearningKey);
         Assert.Equal("99", options.ApprenticeshipId);
         Assert.Equal("approved", options.EventType);
-        Assert.Equal("TrainingPrice", options.Field);
-        Assert.Equal("25000", options.OldValue);
-        Assert.Equal("27000", options.NewValue);
+        Assert.Equal("StartDate", options.Field);
+        Assert.Equal("2025-08-01", options.OldValue);
+        Assert.Equal("2025-09-01", options.NewValue);
+        Assert.Equal("2025-09-01:7200:1800", options.Prices);
     }
 }

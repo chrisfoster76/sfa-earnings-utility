@@ -45,13 +45,10 @@ public class StubMappingRequestBuilderTests
     [Fact]
     public void Build_gives_price_a_single_aggregate_changeType()
     {
-        // Per the swagger contract (confirmed by the other team's lead dev, 2026-09-25): Price
-        // components are never surfaced individually — the whole priceRecords schedule gets one
-        // verdict, returned as a single "Price" entry, not TNP1/TNP2.
         var request = StubMappingRequestBuilder.Build(Guid.NewGuid(), Outcomes((CocChangeKind.Price, CocOutcome.AutoApproved)));
 
         var change = Assert.Single(request.Body.Changes);
-        Assert.Equal("Price", change.ChangeType);
+        Assert.Equal("Prices", change.ChangeType);
     }
 
     [Fact]
@@ -89,7 +86,7 @@ public class StubMappingRequestBuilderTests
             Guid.NewGuid(),
             Outcomes((CocChangeKind.Price, CocOutcome.Pending), (CocChangeKind.StartDate, CocOutcome.Pending)));
 
-        Assert.Equal(["Price", "StartDate"], request.Body.Changes.Select(c => c.ChangeType));
+        Assert.Equal(["Prices", "StartDate"], request.Body.Changes.Select(c => c.ChangeType));
     }
 
     [Fact]
@@ -102,7 +99,7 @@ public class StubMappingRequestBuilderTests
             Guid.NewGuid(),
             Outcomes((CocChangeKind.Price, CocOutcome.Pending), (CocChangeKind.StartDate, CocOutcome.AutoApproved)));
 
-        Assert.Equal("employerApprovalRequired", request.Body.Changes.Single(c => c.ChangeType == "Price").ApprovalStatus);
+        Assert.Equal("employerApprovalRequired", request.Body.Changes.Single(c => c.ChangeType == "Prices").ApprovalStatus);
         Assert.Equal("autoApproved", request.Body.Changes.Single(c => c.ChangeType == "StartDate").ApprovalStatus);
     }
 

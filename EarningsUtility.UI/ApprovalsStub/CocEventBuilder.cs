@@ -17,9 +17,14 @@ public static class CocEventBuilder
             ? new LearningChangeApprovedEvent()
             : new LearningChangeRejectedEvent();
 
+        var status = request.Approved ? "EmployerApproved" : "EmployerRejected";
+        foreach (var change in request.Changes)
+            change.ApprovalStatus = status;
+
         result.LearningKey = request.LearningKey;
         result.ApprenticeshipId = request.ApprenticeshipId;
         result.Changes = request.Changes;
+        result.Prices = request.Prices;
         return result;
     }
 }

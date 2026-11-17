@@ -422,9 +422,8 @@ public static class CocMappingsScreen
     }
 
     /// <summary>
-    /// "Price" when only a Price entry is present, "StartDate" when only that is, "Price &amp;
-    /// StartDate" when both — matches CocChangeKind, so what's shown here always matches what a
-    /// tester picked when mocking the response.
+    /// "Price" when only a Prices entry is present, "StartDate" when only that is, "Price &amp;
+    /// StartDate" when both. Anything else, such as an old "Price" entry, is listed as-is.
     /// </summary>
     private static string DescribeChangeKinds(MappingData mapping)
     {
@@ -432,7 +431,7 @@ public static class CocMappingsScreen
         if (changes is not { Count: > 0 })
             return "Unknown";
 
-        var hasPrice = changes.Any(c => c.ChangeType == "Price");
+        var hasPrice = changes.Any(c => c.ChangeType == "Prices");
         var hasStartDate = changes.Any(c => c.ChangeType == "StartDate");
 
         return (hasPrice, hasStartDate) switch

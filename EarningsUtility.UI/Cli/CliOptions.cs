@@ -21,6 +21,7 @@ public class CliOptions
     public string? Field { get; init; }
     public string? OldValue { get; init; }
     public string? NewValue { get; init; }
+    public string? Prices { get; init; }
     public bool All { get; init; }
 
     /// <summary>
@@ -66,6 +67,7 @@ public class CliOptions
             Field = values.GetValueOrDefault("--field"),
             OldValue = values.GetValueOrDefault("--old"),
             NewValue = values.GetValueOrDefault("--new"),
+            Prices = values.GetValueOrDefault("--prices"),
             All = all
         };
     }

@@ -309,15 +309,27 @@ namespace EarningsUtility.UI
                     return 1;
             }
 
-            if (string.IsNullOrWhiteSpace(cliOptions.Field))
+            if (string.IsNullOrWhiteSpace(cliOptions.Field) && cliOptions.Prices == null)
             {
-                Console.Error.WriteLine("--field is required for --action coc-event.");
+                Console.Error.WriteLine("--field or --prices (or both) is required for --action coc-event.");
                 return 1;
             }
 
-            var changes = new List<LearningChangeEvent.Change>
+            List<LearningChangeEvent.Price>? prices = null;
+            if (cliOptions.Prices != null)
             {
-                new()
+                if (!CocPriceParser.TryParseList(cliOptions.Prices, out var parsedPrices, out var priceError))
+                {
+                    Console.Error.WriteLine($"--prices is invalid: {priceError} Separate rows with commas.");
+                    return 1;
+                }
+                prices = parsedPrices;
+            }
+
+            var changes = new List<LearningChangeEvent.Change>();
+            if (!string.IsNullOrWhiteSpace(cliOptions.Field))
+            {
+                changes.Add(new LearningChangeEvent.Change
                 {
                     ChangeType = cliOptions.Field,
                     Data = new LearningChangeEvent.ChangeData
@@ -325,11 +337,11 @@ namespace EarningsUtility.UI
                         Old = cliOptions.OldValue,
                         New = cliOptions.NewValue
                     }
-                }
-            };
+                });
+            }
 
             var endpointInstance = await ConnectToServiceBus(cliOptions.Env, ns);
-            var request = new CocEventRequest(approved, learningKey, apprenticeshipId, changes);
+            var request = new CocEventRequest(approved, learningKey, apprenticeshipId, changes, prices);
             await CocEventPublisher.Publish(endpointInstance, request);
             await endpointInstance.Stop().ConfigureAwait(false);
             return 0;

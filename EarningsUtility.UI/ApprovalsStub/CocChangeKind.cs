@@ -23,33 +23,23 @@ public static class CocChangeKindOptions
 public static class CocChangeKindMapper
 {
     /// <summary>
-    /// Per the swagger contract (confirmed by the other team's lead dev, 2026-09-25): Price
-    /// components (TNP1/TNP2) are never surfaced individually in the response — the whole
-    /// submitted price schedule (priceRecords) gets exactly one verdict, returned as a single
-    /// aggregate "Price" entry in the response's changes array. Contrast with the live
-    /// das-commitments implementation today, which still returns TNP1/TNP2 separately —
-    /// see tickets/upcoming/approvals-integration.md.
+    /// The changeType of a kind's verdict in the Approvals response. The whole price list gets
+    /// one "Prices" verdict, matching das-commitments' CocChangeField.
     /// </summary>
     public static string ToChangeType(this CocChangeKind kind) => kind switch
     {
-        CocChangeKind.Price => "Price",
+        CocChangeKind.Price => "Prices",
         CocChangeKind.StartDate => "StartDate",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
     /// <summary>
-    /// The LearningChangeApprovedEvent/LearningChangeRejectedEvent's Changes dictionary keys a
-    /// kind maps to on the real, live das-commitments implementation today —
-    /// ProcessApprenticeshipApprovalCommandHandler.MapToLearningFieldName maps TNP1 ->
-    /// TrainingPrice, TNP2 -> AssessmentPrice (anything else passes through as-is), so Price
-    /// expands to two distinct field names while StartDate is one. Used to offer a pick-list
-    /// for the "changed field name" prompt in the CoC event publisher (CocEventPrompts) instead
-    /// of free text, since these are the only fields this tool's mapping-setup screen mocks
-    /// today — see tickets/upcoming/approvals-integration.md.
+    /// The ChangeType a kind takes in the approval event's Changes. Price has none: Approvals
+    /// sends prices in the event's top-level Prices list instead.
     /// </summary>
     public static IReadOnlyList<string> ToEventFieldNames(this CocChangeKind kind) => kind switch
     {
-        CocChangeKind.Price => new[] { "TrainingPrice", "AssessmentPrice" },
+        CocChangeKind.Price => Array.Empty<string>(),
         CocChangeKind.StartDate => new[] { "StartDate" },
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
@@ -58,6 +48,7 @@ public static class CocChangeKindMapper
     {
         switch (value?.Trim().ToLowerInvariant())
         {
+            case "prices":
             case "price":
                 kind = CocChangeKind.Price;
                 return true;
