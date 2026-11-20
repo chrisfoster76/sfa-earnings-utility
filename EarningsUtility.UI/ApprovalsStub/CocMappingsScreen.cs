@@ -28,14 +28,30 @@ public static class CocMappingsScreen
 
         while (true)
         {
-            Console.Clear();
-            Draw(mappings, selected, urlPrefix);
+            var windowSize = (Console.WindowWidth, Console.WindowHeight);
+            bool fitted;
+            try
+            {
+                Console.Clear();
+                fitted = Draw(mappings, selected, urlPrefix);
+            }
+            catch (ArgumentOutOfRangeException) when ((Console.WindowWidth, Console.WindowHeight) != windowSize)
+            {
+                // Resized part way through drawing, so the cursor went off the new edge
+                await Task.Delay(100);
+                continue;
+            }
 
             var itemCount = mappings.Count + 1;
-            var keyInfo = Console.ReadKey(intercept: true);
-            var key = keyInfo.Key;
+            var keyInfo = await ReadKeyOrResizeAsync(windowSize);
+            if (keyInfo == null)
+                continue;
+            var key = keyInfo.Value.Key;
 
-            if (key == ConsoleKey.Delete && keyInfo.Modifiers.HasFlag(ConsoleModifiers.Control) && mappings.Count > 0)
+            if (!fitted && key is not (ConsoleKey.Escape or ConsoleKey.F5))
+                continue;
+
+            if (key == ConsoleKey.Delete && keyInfo.Value.Modifiers.HasFlag(ConsoleModifiers.Control) && mappings.Count > 0)
             {
                 if (ShowDeleteAllConfirmation(mappings.Count))
                 {
@@ -105,6 +121,18 @@ public static class CocMappingsScreen
                         mappings = await stubClient.FindMappings(urlPrefix);
                         selected = Math.Min(selected, mappings.Count);
                     }
+                    break;
+
+                case ConsoleKey.F5:
+                    try
+                    {
+                        mappings = await stubClient.FindMappings(urlPrefix);
+                    }
+                    catch (HttpRequestException ex)
+                    {
+                        ShowErrorModal($"Failed to refresh mappings: {ex.Message}");
+                    }
+                    selected = Math.Min(selected, mappings.Count);
                     break;
 
                 case ConsoleKey.Escape:
@@ -251,7 +279,10 @@ public static class CocMappingsScreen
 
     private static void ShowErrorModal(IEnumerable<string> messageLines)
     {
-        var lines = messageLines.Append("").Append("Press any key to continue...").ToArray();
+        // Two border rows, plus the blank line and the prompt below the message
+        var maxMessageLines = Math.Max(ScreenHeight - 4, 1);
+        var lines = ScreenFit.Cap(messageLines.ToList(), maxMessageLines, hidden => $"... and {hidden} more")
+            .Append("").Append("Press any key to continue...").ToArray();
         DrawModal(lines, ConsoleColor.Red);
         Console.ReadKey(intercept: true);
     }
@@ -280,7 +311,7 @@ public static class CocMappingsScreen
 
     private static void DrawModal(IReadOnlyList<string> lines, ConsoleColor borderColor)
     {
-        var width = Math.Max(lines.Max(l => l.Length), 20) + 4;
+        var width = Math.Min(Math.Max(lines.Max(l => l.Length), 20) + 4, Console.WindowWidth);
         var height = lines.Count + 2;
         var left = Math.Max((Console.WindowWidth - width) / 2, 0);
         var top = Math.Max((Console.WindowHeight - height) / 2, 0);
@@ -292,7 +323,7 @@ public static class CocMappingsScreen
         {
             Console.SetCursorPosition(left, top + 1 + i);
             ConsoleWriter.WriteColor("│ ", borderColor, newLine: false);
-            ConsoleWriter.WriteColor(lines[i].PadRight(width - 4), ConsoleColor.White, newLine: false);
+            ConsoleWriter.WriteColor(Fit(lines[i], width - 4), ConsoleColor.White, newLine: false);
             ConsoleWriter.WriteColor(" │", borderColor, newLine: false);
         }
 
@@ -300,17 +331,34 @@ public static class CocMappingsScreen
         ConsoleWriter.WriteColor("└" + new string('─', width - 2) + "┘", borderColor, newLine: false);
     }
 
-    private static void Draw(IReadOnlyList<MappingData> mappings, int selected, string urlPrefix)
+    // Conhost reports a tall buffer behind the window, Windows Terminal a buffer the same size as it
+    private static int ScreenHeight => Math.Min(Console.WindowHeight, Console.BufferHeight);
+    private static int ScreenWidth => Math.Min(Console.WindowWidth, Console.BufferWidth);
+
+    /// <summary>Returns false, having drawn a message instead, when the window is too small for the panes.</summary>
+    private static bool Draw(IReadOnlyList<MappingData> mappings, int selected, string urlPrefix)
     {
         ConsoleWriter.WriteColor("========================================", ConsoleColor.Cyan);
         ConsoleWriter.WriteColor("  Change-of-Circs approval mappings", ConsoleColor.Cyan);
         ConsoleWriter.WriteColor("========================================", ConsoleColor.Cyan);
-        ConsoleWriter.WriteColor($"Scope: {urlPrefix}    (Up/Down move, Enter select, Delete removes, Ctrl+Delete removes all, Esc back)", ConsoleColor.DarkGray);
+        ConsoleWriter.WriteColor($"Scope: {urlPrefix}    (Up/Down move, Enter select, Delete removes, Ctrl+Delete removes all, F5 refresh, Esc back)", ConsoleColor.DarkGray);
         Console.WriteLine();
 
         var top = Console.CursorTop;
-        var leftContent = BuildLeftContent(mappings, selected);
-        var rightContent = BuildRightContent(selected == 0 ? null : mappings[selected - 1], selected == 0);
+
+        // The top and bottom borders, and the row the cursor is left on
+        var availableRows = ScreenHeight - top - 3;
+        if (availableRows < ScreenFit.MinListRows || ScreenWidth <= LeftWidth + Gap)
+        {
+            DrawTooSmall(top + 3 + ScreenFit.MinListRows);
+            return false;
+        }
+
+        var leftContent = FitLeftContent(BuildLeftContent(mappings, selected), selected, availableRows);
+        var rightContent = ScreenFit.Cap(
+            BuildRightContent(selected == 0 ? null : mappings[selected - 1], selected == 0),
+            availableRows,
+            hidden => ($"... {hidden} more line(s)", ConsoleColor.DarkGray));
 
         var leftInnerWidth = LeftWidth - 4;
         var leftLabelWidth = leftInnerWidth - BadgeWidth;
@@ -349,15 +397,49 @@ public static class CocMappingsScreen
         Console.SetCursorPosition(LeftWidth + Gap, bottomRow);
         ConsoleWriter.WriteColor("└" + new string('─', RightWidth - 2) + "┘", ConsoleColor.DarkGray, newLine: false);
 
-        Console.SetCursorPosition(0, bottomRow + 2);
+        Console.SetCursorPosition(0, bottomRow + 1);
+        return true;
     }
 
-    private static string Fit(string text, int width)
+    private static void DrawTooSmall(int neededHeight)
     {
-        if (text.Length > width)
-            text = width > 1 ? text[..(width - 1)] + "…" : text[..width];
-        return text.PadRight(width);
+        ConsoleWriter.WriteColor(
+            $"The window is too small for this screen ({ScreenWidth} x {ScreenHeight}). Make it at least {LeftWidth + Gap + 1} columns wide and {neededHeight} rows high.",
+            ConsoleColor.Yellow);
+        ConsoleWriter.WriteColor("Resize it to carry on, F5 to refresh, or Esc to go back.", ConsoleColor.DarkGray);
     }
+
+    // Null when the window is resized before a key is pressed, so the caller redraws
+    private static async Task<ConsoleKeyInfo?> ReadKeyOrResizeAsync((int Width, int Height) drawnSize)
+    {
+        while (!Console.KeyAvailable)
+        {
+            if ((Console.WindowWidth, Console.WindowHeight) != drawnSize)
+                return null;
+            await Task.Delay(100);
+        }
+
+        return Console.ReadKey(intercept: true);
+    }
+
+    /// <summary>Scrolls the list to keep the selected row in view, with a line for the rows hidden on each side.</summary>
+    private static List<LeftRow> FitLeftContent(List<LeftRow> rows, int selected, int availableRows)
+    {
+        var window = ScreenFit.FitList(rows.Count, selected, availableRows);
+        var fitted = new List<LeftRow>();
+
+        if (window.HiddenAbove > 0)
+            fitted.Add(MoreRow($"  ... {window.HiddenAbove} more above"));
+        fitted.AddRange(rows.Skip(window.First).Take(window.Count));
+        if (window.HiddenBelow > 0)
+            fitted.Add(MoreRow($"  ... {window.HiddenBelow} more below"));
+
+        return fitted;
+    }
+
+    private static LeftRow MoreRow(string text) => new(text, ConsoleColor.DarkGray, null, ConsoleColor.Gray, ConsoleColor.Black);
+
+    private static string Fit(string text, int width) => ScreenFit.Truncate(text, width).PadRight(width);
 
     /// <summary>Centres badge text within a fixed-width field so the background fill looks like a pill.</summary>
     private static string CenterBadge(string text, int width)
