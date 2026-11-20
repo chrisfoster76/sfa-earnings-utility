@@ -114,4 +114,27 @@ public class StubMappingRequestBuilderTests
         var change = Assert.Single(request.Body.Changes);
         Assert.Equal(expectedStatus, change.ApprovalStatus);
     }
+    [Theory]
+    [InlineData(CocOutcome.AutoApproved, "autoApproved")]
+    [InlineData(CocOutcome.AutoRejected, "autoRejected")]
+    [InlineData(CocOutcome.Pending, "employerApprovalRequired")]
+    public void Build_gives_PlannedEndDate_a_single_entry_with_its_outcome(CocOutcome outcome, string expectedStatus)
+    {
+        var request = StubMappingRequestBuilder.Build(Guid.NewGuid(), Outcomes((CocChangeKind.PlannedEndDate, outcome)));
+
+        var change = Assert.Single(request.Body.Changes);
+        Assert.Equal("PlannedEndDate", change.ChangeType);
+        Assert.Equal(expectedStatus, change.ApprovalStatus);
+        Assert.Null(request.Body.Prices);
+    }
+
+    [Fact]
+    public void Build_combines_PlannedEndDate_with_the_other_change_kinds()
+    {
+        var request = StubMappingRequestBuilder.Build(
+            Guid.NewGuid(),
+            Outcomes((CocChangeKind.PlannedEndDate, CocOutcome.AutoApproved), (CocChangeKind.Price, CocOutcome.Pending), (CocChangeKind.StartDate, CocOutcome.Pending)));
+
+        Assert.Equal(["Prices", "StartDate", "PlannedEndDate"], request.Body.Changes.Select(c => c.ChangeType));
+    }
 }

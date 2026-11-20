@@ -6,7 +6,7 @@ namespace EarningsUtility.UI.ApprovalsStub;
 /// The "Maintain Change-of-Circs approval mappings" screen — a two-pane list/detail view over
 /// das-api-stub's approvals/* mappings. Left pane lists what's registered (plus a "create new"
 /// row at the top), each row showing the learningKey, the change kind(s) it mocks (Price /
-/// StartDate / Price & StartDate), and a colour-coded outcome badge; right pane shows the
+/// StartDate / PlannedEndDate, or a combination joined with "&"), and a colour-coded outcome badge; right pane shows the
 /// highlighted mapping's parsed fields and raw JSON body. Enter on an existing mapping opens a
 /// Modify/Delete sub-menu; the Delete key deletes it directly, behind a modal confirmation drawn
 /// over the current screen. Enter on "create new" runs the same GUID+change-kind+outcome prompt
@@ -421,35 +421,13 @@ public static class CocMappingsScreen
         };
     }
 
-    /// <summary>
-    /// "Price" when only a Prices entry is present, "StartDate" when only that is, "Price &amp;
-    /// StartDate" when both. Anything else, such as an old "Price" entry, is listed as-is.
-    /// </summary>
-    private static string DescribeChangeKinds(MappingData mapping)
-    {
-        var changes = CocMappingHelpers.TryParseChanges(mapping.Data);
-        if (changes is not { Count: > 0 })
-            return "Unknown";
-
-        var hasPrice = changes.Any(c => c.ChangeType == "Prices");
-        var hasStartDate = changes.Any(c => c.ChangeType == "StartDate");
-
-        return (hasPrice, hasStartDate) switch
-        {
-            (true, true) => "Price & StartDate",
-            (true, false) => "Price",
-            (false, true) => "StartDate",
-            _ => string.Join(", ", changes.Select(c => c.ChangeType).Distinct())
-        };
-    }
-
     private static string DescribeMapping(MappingData mapping)
     {
         var learningKey = ExtractLearningKey(mapping.Url);
         var keyText = learningKey?.ToString() ?? mapping.Url;
         // Plain ASCII separator, same reasoning as DescribeOutcomeBadge — not every console
         // font/code page renders something like "·" reliably.
-        return $"{keyText} | {DescribeChangeKinds(mapping)}";
+        return $"{keyText} | {CocMappingHelpers.DescribeChangeKinds(mapping.Data)}";
     }
 
     private static Guid? ExtractLearningKey(string url) => CocMappingHelpers.ExtractLearningKey(url);

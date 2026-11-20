@@ -42,6 +42,27 @@ public static class CocMappingHelpers
 
     public static ApprovalFieldChange? TryParseFirstChange(string data) => TryParseChanges(data)?.FirstOrDefault();
 
+    private static readonly (string ChangeType, string Label)[] KnownChangeKinds =
+    {
+        ("Prices", "Price"),
+        ("StartDate", "StartDate"),
+        ("PlannedEndDate", "PlannedEndDate")
+    };
+
+    // Unrecognised change types, such as the old "Price" spelling, are listed as they are
+    public static string DescribeChangeKinds(string data)
+    {
+        var changes = TryParseChanges(data);
+        if (changes is not { Count: > 0 })
+            return "Unknown";
+
+        var changeTypes = changes.Select(c => c.ChangeType).Distinct().ToList();
+        if (changeTypes.Any(t => KnownChangeKinds.All(k => k.ChangeType != t)))
+            return string.Join(", ", changeTypes);
+
+        return string.Join(" & ", KnownChangeKinds.Where(k => changeTypes.Contains(k.ChangeType)).Select(k => k.Label));
+    }
+
     public static Guid? ExtractLearningKey(string url)
     {
         var lastSegment = url.TrimEnd('/').Split('/').LastOrDefault();

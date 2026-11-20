@@ -8,7 +8,8 @@ namespace EarningsUtility.UI.ApprovalsStub;
 public enum CocChangeKind
 {
     Price,
-    StartDate
+    StartDate,
+    PlannedEndDate
 }
 
 public static class CocChangeKindOptions
@@ -16,7 +17,8 @@ public static class CocChangeKindOptions
     public static readonly (string Label, CocChangeKind Value)[] All =
     {
         ("Price (TNP1 + TNP2)", CocChangeKind.Price),
-        ("StartDate", CocChangeKind.StartDate)
+        ("StartDate", CocChangeKind.StartDate),
+        ("PlannedEndDate", CocChangeKind.PlannedEndDate)
     };
 }
 
@@ -30,6 +32,7 @@ public static class CocChangeKindMapper
     {
         CocChangeKind.Price => "Prices",
         CocChangeKind.StartDate => "StartDate",
+        CocChangeKind.PlannedEndDate => "PlannedEndDate",
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
@@ -41,6 +44,7 @@ public static class CocChangeKindMapper
     {
         CocChangeKind.Price => Array.Empty<string>(),
         CocChangeKind.StartDate => new[] { "StartDate" },
+        CocChangeKind.PlannedEndDate => new[] { "PlannedEndDate" },
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null)
     };
 
@@ -56,13 +60,19 @@ public static class CocChangeKindMapper
             case "start-date":
                 kind = CocChangeKind.StartDate;
                 return true;
+            case "plannedenddate":
+            case "planned-end-date":
+            case "enddate":
+            case "end-date":
+                kind = CocChangeKind.PlannedEndDate;
+                return true;
             default:
                 kind = default;
                 return false;
         }
     }
 
-    /// <summary>Parses a comma/plus-separated list of change kinds, e.g. "Price,StartDate".</summary>
+    /// <summary>Parses a comma/plus-separated list of change kinds, e.g. "Price,StartDate,PlannedEndDate".</summary>
     public static bool TryParseMany(string? value, out HashSet<CocChangeKind> kinds)
     {
         kinds = new HashSet<CocChangeKind>();

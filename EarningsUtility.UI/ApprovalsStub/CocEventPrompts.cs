@@ -175,7 +175,7 @@ public static class CocEventPrompts
     /// when given (the pending changeTypes on the mapping this event relates to), otherwise every
     /// field name CocChangeKind can produce (see CocChangeKindMapper.ToEventFieldNames) — plus a "Custom field name..." escape hatch for
     /// anything this tool's mapping-setup screen doesn't mock yet (e.g.
-    /// ExpectedEndDate/PersonalDetails/DateOfBirthChanged). Returns null if Escape is pressed on
+    /// PersonalDetails/DateOfBirthChanged). Returns null if Escape is pressed on
     /// either the picker or the custom-name entry — a genuine cancel, not a re-prompt, so the
     /// caller can decide what cancelling means at this point in the flow.
     /// </summary>

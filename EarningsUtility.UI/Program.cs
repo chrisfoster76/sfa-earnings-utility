@@ -193,7 +193,7 @@ namespace EarningsUtility.UI
 
             if (!CocChangeKindMapper.TryParseMany(cliOptions.ChangeType, out var changeKinds))
             {
-                Console.Error.WriteLine("--change-type is required for --action coc-setup. Expected one or more of: price, startdate (comma-separated, e.g. price,startdate).");
+                Console.Error.WriteLine("--change-type is required for --action coc-setup. Expected one or more of: price, startdate, plannedenddate (comma-separated, e.g. price,plannedenddate).");
                 return 1;
             }
 
